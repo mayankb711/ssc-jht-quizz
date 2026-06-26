@@ -1,10 +1,6 @@
-﻿/*
-  firebase.js — Cloud layer via Firestore REST API.
-  Each device gets its own document keyed by a device UUID.
-  No SDK needed — works with just a projectId + Web API Key.
-*/
-
-import { kvGet, kvSet, allAttempts, allGeneratedQuestions, upsertGeneratedQuestion, replaceAttempts, addAttempt } from './local.js';
+﻿import { kvGet, kvSet, allAttempts, allGeneratedQuestions, upsertGeneratedQuestion, replaceAttempts, addAttempt } from './local.js';
+import { logError } from '../core/diagnostics.js';
+import { KV_KEYS } from '../config/app.js';
 
 let _config = null;
 let _deviceId = null;
@@ -12,6 +8,7 @@ let _syncInProgress = false;
 let _lastSyncTs = 0;
 let _listeners = [];
 let _online = navigator.onLine;
+let _recordMutex = Promise.resolve();
 
 window.addEventListener('online', () => { _online = true; notify(); });
 window.addEventListener('offline', () => { _online = false; notify(); });
@@ -40,15 +37,14 @@ export function getStatus() {
 export function isOnline() { return _online; }
 
 async function getOrCreateDeviceId() {
-  let id = await kvGet('firebase_device_id');
+  let id = await kvGet(KV_KEYS.firebaseDeviceId);
   if (!id) {
     id = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
-    await kvSet('firebase_device_id', id);
+    await kvSet(KV_KEYS.firebaseDeviceId, id);
   }
   return id;
 }
 
-// ---- Firestore REST helpers ----
 function fsUrl(projectId) {
   return 'https://firestore.googleapis.com/v1/projects/' + encodeURIComponent(projectId) + '/databases/(default)/documents';
 }
@@ -60,16 +56,23 @@ function fsDocUrl(projectId, collection, docId) {
 function fromFields(fields) {
   const out = {};
   for (const [k, v] of Object.entries(fields || {})) {
+    if (v === null || v === undefined) continue;
     if (v.stringValue !== undefined) out[k] = v.stringValue;
     else if (v.integerValue !== undefined) out[k] = parseInt(v.integerValue, 10);
     else if (v.doubleValue !== undefined) out[k] = v.doubleValue;
     else if (v.booleanValue !== undefined) out[k] = v.booleanValue;
+    else if (v.nullValue !== undefined) out[k] = null;
     else if (v.arrayValue?.values) out[k] = v.arrayValue.values.map(item => {
       if (item.stringValue !== undefined) return item.stringValue;
       if (item.integerValue !== undefined) return parseInt(item.integerValue, 10);
+      if (item.doubleValue !== undefined) return item.doubleValue;
+      if (item.booleanValue !== undefined) return item.booleanValue;
+      if (item.nullValue !== undefined) return null;
+      if (item.mapValue?.fields) return fromFields(item.mapValue.fields);
       return item;
     });
     else if (v.mapValue?.fields) out[k] = fromFields(v.mapValue.fields);
+    else out[k] = v;
   }
   return out;
 }
@@ -77,23 +80,26 @@ function fromFields(fields) {
 function toFields(obj) {
   const fields = {};
   for (const [k, v] of Object.entries(obj || {})) {
-    if (v === null || v === undefined) continue;
+    if (v === null) { fields[k] = { nullValue: null }; continue; }
+    if (v === undefined) continue;
     if (typeof v === 'string') fields[k] = { stringValue: v };
     else if (typeof v === 'number') fields[k] = Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
     else if (typeof v === 'boolean') fields[k] = { booleanValue: v };
     else if (Array.isArray(v)) fields[k] = { arrayValue: { values: v.map(item => {
+      if (item === null) return { nullValue: null };
+      if (item === undefined) return { nullValue: null };
       if (typeof item === 'string') return { stringValue: item };
       if (typeof item === 'number') return { integerValue: String(item) };
+      if (typeof item === 'boolean') return { booleanValue: item };
       return { stringValue: JSON.stringify(item) };
     }) } };
   }
   return fields;
 }
 
-// ---- Config ----
 export async function configure() {
-  const projectId = await kvGet('fb_project_id');
-  const apiKey = await kvGet('fb_api_key');
+  const projectId = await kvGet(KV_KEYS.fbProjectId);
+  const apiKey = await kvGet(KV_KEYS.fbApiKey);
   if (!projectId || !apiKey) { _config = null; _deviceId = null; notify(); return false; }
   try {
     _config = { projectId, apiKey };
@@ -101,7 +107,7 @@ export async function configure() {
     notify();
     return true;
   } catch (e) {
-    console.warn('Firebase configure failed:', e);
+    logError(e, { file: 'firebase.js', func: 'configure', source: 'firebase', action: 'Firebase configuration', context: { projectId } });
     _config = null; _deviceId = null; notify(); return false;
   }
 }
@@ -117,11 +123,10 @@ export async function signOut() {
 
 async function touchSyncTs() {
   _lastSyncTs = Date.now();
-  await kvSet('firebase_last_sync_ts', _lastSyncTs);
+  await kvSet(KV_KEYS.firebaseLastSyncTs, _lastSyncTs);
   notify();
 }
 
-// ---- Firestore document helpers ----
 async function userDocUrl() {
   return fsDocUrl(_config.projectId, 'users', _deviceId);
 }
@@ -146,28 +151,36 @@ async function writeDoc(update) {
   return res.json();
 }
 
-// ---- Record one attempt ----
+function tsToComparable(ts) {
+  if (ts == null) return 0;
+  if (typeof ts === 'number') return ts;
+  if (typeof ts === 'string') return new Date(ts).getTime();
+  return 0;
+}
+
 export async function recordAttempt(attempt) {
   await addAttempt(attempt);
   if (!_config || !_deviceId || !_online) return;
-  try {
-    const existing = await readDoc();
-    const attempts = existing?.attempts ? JSON.parse(existing.attempts) : [];
-    attempts.push(attempt);
-    await writeDoc({
-      attempts: JSON.stringify(attempts),
-      ts: new Date().toISOString(),
-      settings: existing?.settings || '{}',
-      questions: existing?.questions || '[]',
-      bookmarks: existing?.bookmarks || '[]',
-    });
-    await touchSyncTs();
-  } catch (e) {
-    console.warn('Firebase recordAttempt failed:', e);
-  }
+  _recordMutex = _recordMutex.then(async () => {
+    try {
+      const existing = await readDoc();
+      const attempts = existing?.attempts ? JSON.parse(existing.attempts) : [];
+      attempts.push(attempt);
+      await writeDoc({
+        attempts: JSON.stringify(attempts),
+        ts: Date.now(),
+        settings: existing?.settings || '{}',
+        questions: existing?.questions || '[]',
+        bookmarks: existing?.bookmarks || '[]',
+      });
+      await touchSyncTs();
+    } catch (e) {
+      logError(e, { file: 'firebase.js', func: 'recordAttempt', source: 'firebase', action: 'record attempt to cloud', recoverySteps: ['Data is saved locally', 'Will sync when online'] });
+    }
+  });
+  await _recordMutex;
 }
 
-// ---- Fetch attempts from cloud ----
 export async function fetchAttempts() {
   if (!_config || !_deviceId || !_online) return;
   try {
@@ -179,7 +192,7 @@ export async function fetchAttempts() {
     let changed = false;
     for (const r of cloudAttempts) {
       const have = local.get(r.id);
-      if (!have || (r.ts || 0) >= (have.ts || 0)) {
+      if (!have || tsToComparable(r.ts) >= tsToComparable(have.ts)) {
         local.set(r.id, r);
         changed = true;
       }
@@ -187,7 +200,7 @@ export async function fetchAttempts() {
     if (changed) await replaceAttempts([...local.values()]);
     await touchSyncTs();
   } catch (e) {
-    console.warn('Firebase fetchAttempts failed:', e);
+    logError(e, { file: 'firebase.js', func: 'fetchAttempts', source: 'firebase', action: 'fetch attempts from cloud', recoverySteps: ['Using local data', 'Will retry on next sync'] });
   }
 }
 
@@ -196,7 +209,6 @@ async function readAllAndMerge() {
   try {
     const doc = await readDoc();
     if (!doc) return;
-    // merge attempts
     if (doc.attempts) {
       const cloudAttempts = JSON.parse(doc.attempts);
       if (cloudAttempts.length) {
@@ -204,7 +216,7 @@ async function readAllAndMerge() {
         let changed = false;
         for (const r of cloudAttempts) {
           const have = local.get(r.id);
-          if (!have || (r.ts || 0) >= (have.ts || 0)) {
+          if (!have || tsToComparable(r.ts) >= tsToComparable(have.ts)) {
             local.set(r.id, r);
             changed = true;
           }
@@ -212,32 +224,34 @@ async function readAllAndMerge() {
         if (changed) await replaceAttempts([...local.values()]);
       }
     }
-    // merge settings
     if (doc.settings) {
       const settings = JSON.parse(doc.settings);
-      if (settings.theme) {
-        await kvSet('theme', settings.theme);
-        document.documentElement.setAttribute('data-theme', settings.theme);
+      for (const [key, value] of Object.entries(settings)) {
+        if (value == null || value === '') continue;
+        const existing = await kvGet(key, null);
+        if (existing == null || settings._ts > existing._ts) {
+          await kvSet(key, value);
+          if (key === 'theme') document.documentElement.setAttribute('data-theme', value);
+        }
       }
-      if (settings.neuron_cap) await kvSet('neuron_cap', settings.neuron_cap);
     }
-    // merge questions
     if (doc.questions) {
       const qs = JSON.parse(doc.questions);
       for (const q of qs) {
         if (q?.id) await upsertGeneratedQuestion(q);
       }
     }
-    // merge bookmarks
     if (doc.bookmarks) {
-      const bookmarks = JSON.parse(doc.bookmarks);
-      if (Array.isArray(bookmarks) && bookmarks.length) {
-        await kvSet('bookmarks', bookmarks);
+      const cloudBm = JSON.parse(doc.bookmarks);
+      if (Array.isArray(cloudBm) && cloudBm.length) {
+        const localBm = await kvGet('bookmarks', []);
+        const merged = [...new Set([...localBm, ...cloudBm])];
+        await kvSet('bookmarks', merged);
       }
     }
     await touchSyncTs();
   } catch (e) {
-    console.warn('Firebase readAllAndMerge failed:', e);
+    logError(e, { file: 'firebase.js', func: 'readAllAndMerge', source: 'firebase', action: 'read and merge cloud data', recoverySteps: ['Local data preserved', 'Will retry on next sync'] });
   }
 }
 
@@ -245,18 +259,18 @@ export async function fetchAll() {
   await readAllAndMerge();
 }
 
-// ---- Batch push ----
 export async function push() {
   if (!_config) return { ok: false, reason: 'not-configured' };
   if (!_deviceId) return { ok: false, reason: 'no-session' };
   if (_syncInProgress) return { ok: false, reason: 'sync-in-progress' };
   _syncInProgress = true; notify();
   try {
-    const lastSync = await kvGet('firebase_last_sync_ts', 0);
+    const lastSync = await kvGet(KV_KEYS.firebaseLastSyncTs, 0);
     const allAttemptsLocal = (await allAttempts()).filter(a => a.ts > lastSync);
     const settings = {
       theme: await kvGet('theme', 'dark'),
       neuron_cap: await kvGet('neuron_cap', 8000),
+      _ts: Date.now(),
     };
     const questions = await allGeneratedQuestions();
     const bookmarks = await kvGet('bookmarks', []);
@@ -265,12 +279,16 @@ export async function push() {
     const prevQuestions = existing?.questions ? JSON.parse(existing.questions) : [];
     const mergedAttempts = mergeArrays(prevAttempts, allAttemptsLocal, 'id');
     const mergedQuestions = mergeArrays(prevQuestions, questions, 'id');
+    const prevSettings = existing?.settings ? JSON.parse(existing.settings) : {};
+    const mergedSettings = { ...prevSettings, ...settings };
+    const prevBookmarks = existing?.bookmarks ? JSON.parse(existing.bookmarks) : [];
+    const mergedBookmarks = [...new Set([...prevBookmarks, ...bookmarks])];
     await writeDoc({
       attempts: JSON.stringify(mergedAttempts),
-      settings: JSON.stringify(settings),
+      settings: JSON.stringify(mergedSettings),
       questions: JSON.stringify(mergedQuestions),
-      bookmarks: JSON.stringify(bookmarks),
-      ts: new Date().toISOString(),
+      bookmarks: JSON.stringify(mergedBookmarks),
+      ts: Date.now(),
     });
     await touchSyncTs();
     return { ok: true, pushed: allAttemptsLocal.length, total: allAttemptsLocal.length };
@@ -281,7 +299,6 @@ export async function push() {
   }
 }
 
-// ---- Pull ----
 export async function pull() {
   if (!_config) return { ok: false, reason: 'not-configured' };
   if (!_deviceId) return { ok: false, reason: 'no-session' };
@@ -305,7 +322,7 @@ export async function autoPull() {
 function mergeArrays(a, b, key) {
   const map = new Map();
   for (const item of [...(a || []), ...(b || [])]) {
-    if (item && item[key]) map.set(item[key], item);
+    if (item && item[key] != null) map.set(item[key], item);
   }
   return [...map.values()];
 }

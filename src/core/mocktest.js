@@ -4,12 +4,13 @@
    ============================================================ */
 
 import { pickMock, DEFAULT_MOCK_STRUCTURE } from './engine.js';
-import { record, scoreSession, NEGATIVE } from './progress.js';
+import { record, scoreSession } from './progress.js';
+import { APP } from '../config/app.js';
 
 export const MOCK = {
   count: 200,
   durationMs: 2 * 60 * 60 * 1000,   // 2 hours
-  negative: NEGATIVE,
+  negative: APP.negativeMarking,
 };
 
 /** Start a fresh mock test: returns {questions, startedAt, deadline}. */

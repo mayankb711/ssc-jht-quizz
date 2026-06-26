@@ -8,7 +8,8 @@ import {
 } from '../store/cloud.js';
 import { getUsage } from '../ai/client.js';
 import { downloadBackup, importBackupPayload } from '../core/backup.js';
-import { APP } from '../config/app.js';
+import { logError } from '../core/diagnostics.js';
+import { APP, KV_KEYS } from '../config/app.js';
 
 export async function mount(wrap, params, { topbar, go }) {
   wrap.innerHTML = `${topbar('Settings', 'Personalization + data')}<div id="sbody"><div class="ui-spinner"></div></div>`;
@@ -31,6 +32,13 @@ export async function mount(wrap, params, { topbar, go }) {
   });
 
   render();
+
+  function withTry(label, fn) {
+    return async function () {
+      try { return await fn.apply(this, arguments); }
+      catch (e) { logError(e, { file: 'settings.js', func: label, source: 'ui', action: label }); flash('Error: ' + (e.message || 'Unknown')); }
+    };
+  }
 
   function render() {
     body.innerHTML = `
@@ -57,7 +65,7 @@ export async function mount(wrap, params, { topbar, go }) {
           <h2 class="ui-section-head__title">AI Explanations</h2>
         </div>
         <div class="ui-card__body">
-          <p class="ui-muted ui-text-sm">Paste your Cloudflare credentials to enable AI explanations. They\'re cached forever, so each concept costs only once.</p>
+          <p class="ui-muted ui-text-sm">Paste your Cloudflare credentials to enable AI explanations. They're cached forever, so each concept costs only once.</p>
           <div class="ui-field">
             <label class="ui-field__label">Cloudflare Account ID</label>
             <input id="cf_account" class="ui-input" value="${esc(cfAccount)}" placeholder="e.g. abcd1234">
@@ -137,36 +145,36 @@ export async function mount(wrap, params, { topbar, go }) {
     renderSyncSection();
 
     // Event listeners
-    document.getElementById('theme').addEventListener('change', async (e) => {
-      await kvSet('theme', e.target.value);
+    document.getElementById('theme').addEventListener('change', withTry('theme change', async (e) => {
+      await kvSet(KV_KEYS.theme, e.target.value);
       document.documentElement.setAttribute('data-theme', e.target.value);
-    });
-    document.getElementById('save-ai').addEventListener('click', async () => {
-      await kvSet('cf_account', document.getElementById('cf_account').value.trim());
-      await kvSet('cf_token',   document.getElementById('cf_token').value.trim());
-      await kvSet('cf_model',   document.getElementById('cf_model').value);
-      await kvSet('neuron_cap', parseInt(document.getElementById('neuron_cap').value,10)||APP.defaultNeuronCap);
+    }));
+    document.getElementById('save-ai').addEventListener('click', withTry('save AI settings', async () => {
+      await kvSet(KV_KEYS.cfAccount, document.getElementById('cf_account').value.trim());
+      await kvSet(KV_KEYS.cfToken,   document.getElementById('cf_token').value.trim());
+      await kvSet(KV_KEYS.cfModel,   document.getElementById('cf_model').value);
+      await kvSet(KV_KEYS.neuronCap, parseInt(document.getElementById('neuron_cap').value,10)||APP.defaultNeuronCap);
       flash('AI settings saved.');
-    });
-    document.getElementById('save-fb').addEventListener('click', async () => {
-      await kvSet('fb_project_id', document.getElementById('fb_project_id').value.trim());
-      await kvSet('fb_api_key', document.getElementById('fb_api_key').value.trim());
+    }));
+    document.getElementById('save-fb').addEventListener('click', withTry('save Firebase config', async () => {
+      await kvSet(KV_KEYS.fbProjectId, document.getElementById('fb_project_id').value.trim());
+      await kvSet(KV_KEYS.fbApiKey, document.getElementById('fb_api_key').value.trim());
       const ok = await configure();
       flash(ok ? 'Firebase connected.' : 'Could not connect. Check Project ID and API Key.');
       if (ok) {
         cloudStatus = getStatus();
         renderSyncSection();
       }
-    });
-    document.getElementById('save-goal').addEventListener('click', async () => {
+    }));
+    document.getElementById('save-goal').addEventListener('click', withTry('save goal', async () => {
       const val = parseInt(document.getElementById('daily_goal').value, 10);
       if (val >= 5 && val <= 500) {
-        await kvSet('daily_goal', val);
+        await kvSet(KV_KEYS.dailyGoal, val);
         flash('Daily goal saved.');
       } else {
         flash('Enter a number between 5 and 500.');
       }
-    });
+    }));
   }
 
   function renderSyncSection() {
@@ -211,25 +219,23 @@ export async function mount(wrap, params, { topbar, go }) {
 
     el.innerHTML = authHtml;
 
-    document.getElementById('fb-push')?.addEventListener('click', async () => {
+    document.getElementById('fb-push')?.addEventListener('click', withTry('cloud push', async () => {
       const btn = document.getElementById('fb-push');
-      btn.disabled = true;
-      btn.textContent = 'Syncing...';
+      if (btn) { btn.disabled = true; btn.textContent = 'Syncing...'; }
       const r = await cloudPush();
       flash(r.ok ? `Pushed ${r.pushed} items.` : 'Push failed: ' + r.reason);
       cloudStatus = getStatus();
       renderSyncSection();
-    });
+    }));
 
-    document.getElementById('fb-pull')?.addEventListener('click', async () => {
+    document.getElementById('fb-pull')?.addEventListener('click', withTry('cloud pull', async () => {
       const btn = document.getElementById('fb-pull');
-      btn.disabled = true;
-      btn.textContent = 'Pulling...';
+      if (btn) { btn.disabled = true; btn.textContent = 'Pulling...'; }
       const r = await cloudPull();
       flash(r.ok ? 'Sync complete.' : 'Pull failed: ' + r.reason);
       cloudStatus = getStatus();
       renderSyncSection();
-    });
+    }));
 
     document.getElementById('fb-copy-id')?.addEventListener('click', () => {
       if (deviceId) {

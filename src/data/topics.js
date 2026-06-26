@@ -58,19 +58,41 @@ export const TOPICS = [
 
   { id: 'hi_synonym', subject: 'hi', share: 12,
     label: 'पर्यायवाची शब्द', labelHi: 'पर्यायवाची',
-    skills: ['common','classical','rarest','all_real'] },
+    skills: ['common','classical','rarest','all_real'],
+    subtopics: [
+      { id: 'hi_syn_common', label: 'Common', microtopics: ['common', 'classical'] },
+      { id: 'hi_syn_advanced', label: 'Advanced/Rare', microtopics: ['rarest', 'all_real'] }
+    ]
+  },
 
   { id: 'hi_sentence_type', subject: 'hi', share: 12,
     label: 'वाक्य रचना (सरल/संयुक्त/मिश्र/शुद्धि)', labelHi: 'वाक्य रचना',
-    skills: ['classify','identify','not_x','gender'] },
+    skills: ['classify','identify','not_x','gender'],
+    subtopics: [
+      { id: 'hi_sent_classify', label: 'Classification', microtopics: ['classify', 'identify'] },
+      { id: 'hi_sent_shuddhi', label: 'Shuddhi', microtopics: ['gender', 'not_x'] }
+    ]
+  },
 
   { id: 'hi_terminology', subject: 'hi', share: 11,
     label: 'प्रशासनिक / पारिभाषिक शब्दावली', labelHi: 'प्रशासनिक शब्द',
-    skills: ['hi_to_en','en_to_hi','context','register'] },
+    skills: ['hi_to_en','en_to_hi','context','register'],
+    subtopics: [
+      { id: 'hi_term_hi_en', label: 'Hindi→English', microtopics: ['hi_to_en'] },
+      { id: 'hi_term_en_hi', label: 'English→Hindi', microtopics: ['en_to_hi'] },
+      { id: 'hi_term_register', label: 'Register & Context', microtopics: ['context', 'register'] }
+    ]
+  },
 
   { id: 'hi_pada_parichay', subject: 'hi', share: 8,
     label: 'पद परिचय (क्रिया/कारक/विशेषण)', labelHi: 'पद परिचय',
-    skills: ['verb_type','karak','adjective','adverb','dual'] },
+    skills: ['verb_type','karak','adjective','adverb','dual'],
+    subtopics: [
+      { id: 'hi_pada_kriya', label: 'Verb', microtopics: ['verb_type', 'dual'] },
+      { id: 'hi_pada_karak', label: 'Case', microtopics: ['karak'] },
+      { id: 'hi_pada_visheshan', label: 'Adjective/Adverb', microtopics: ['adjective', 'adverb'] }
+    ]
+  },
 
   { id: 'hi_punctuation', subject: 'hi', share: 7,
     label: 'विराम चिन्ह', labelHi: 'विराम चिन्ह',
@@ -119,7 +141,12 @@ export const TOPICS = [
   // ---- ENGLISH ---- (Q.101–Q200)
   { id: 'en_reading', subject: 'en', share: 15,
     label: 'Reading Comprehension', labelHi: 'गद्यांश',
-    skills: ['inference','detail','grammar_in_context','tone','title'] },
+    skills: ['inference','detail','grammar_in_context','tone','title'],
+    subtopics: [
+      { id: 'en_read_inference', label: 'Inference', microtopics: ['inference', 'tone', 'title'] },
+      { id: 'en_read_detail', label: 'Detail', microtopics: ['detail', 'grammar_in_context'] }
+    ]
+  },
 
   { id: 'en_cloze', subject: 'en', share: 15,
     label: 'Cloze Test (passage fill-in)', labelHi: 'रिक्त स्थान (गद्यांश)',
@@ -135,7 +162,12 @@ export const TOPICS = [
 
   { id: 'en_voice', subject: 'en', share: 6,
     label: 'Voice (Active/Passive)', labelHi: 'वाच्य (Active/Passive)',
-    skills: ['simple','continuous','perfect','modal','infinitive','stacked'] },
+    skills: ['simple','continuous','perfect','modal','infinitive','stacked'],
+    subtopics: [
+      { id: 'en_voice_simple', label: 'Simple tenses', microtopics: ['simple', 'continuous'] },
+      { id: 'en_voice_perfect', label: 'Perfect & modal', microtopics: ['perfect', 'modal', 'infinitive', 'stacked'] }
+    ]
+  },
 
   { id: 'en_oneword', subject: 'en', share: 5,
     label: 'One-word Substitution', labelHi: 'एक-शब्द प्रयोग',
@@ -167,7 +199,11 @@ export const TOPICS = [
 
   { id: 'en_improvement', subject: 'en', share: 5,
     label: 'Sentence Improvement (tense)', labelHi: 'वाक्य सुधार',
-    skills: ['past_continuous','future_perfect','past_perfect'] },
+    skills: ['past_continuous','future_perfect','past_perfect'],
+    subtopics: [
+      { id: 'en_imp_tense', label: 'Tense correction', microtopics: ['past_continuous', 'future_perfect', 'past_perfect'] }
+    ]
+  },
 
   { id: 'en_article', subject: 'en', share: 4,
     label: 'Articles', labelHi: 'Articles',

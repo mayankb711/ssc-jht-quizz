@@ -1,130 +1,40 @@
-﻿/* ============================================================
-   engine.js â€” adaptive question selection (LOCAL, 0 neurons).
-   Algorithm: weighted lottery where each (topic) and (difficulty)
-   weight is derived from the learner's mastery curve.
-   - Weak topics get higher weight (drill weak areas).
-   - Correctly-answered questions are spaced (SRS: half-life grows
-     on each correct, resets on each wrong), so they resurface less.
-   - Difficulty floats toward the band where the learner is ~65%
-     correct (zone of proximal development).
-   Mastery = smoothed correct-rate per (topic,skill) over recency.
-   ============================================================ */
-
-import { QUESTIONS } from '../data/questions.js';
+﻿import { QUESTIONS } from '../data/questions.js';
 import { TOPICS } from '../data/topics.js';
-import { allAttempts } from '../store/local.js';
+import { allAttempts, kvGet } from '../store/local.js';
 import { getGeneratedBank } from '../ai/client.js';
 import { fetchAttempts } from '../store/cloud.js';
+import { getTopicStats, getAllTopicStats } from './progress.js';
+import { logError } from './diagnostics.js';
+import { LearningPlanner } from '../learning/planner.js';
+import { SessionComposer } from '../learning/composer.js';
+import { loadProfile, saveProfile } from '../learning/profile.js';
 
 const DAY = 86400000;
+let _planner = null;
+let _composer = null;
 
-// Build per-(topic.skill) mastery from attempts. Returns Map.
-export async function computeMastery() {
-  await fetchAttempts(); // online-first: pull cloud data into local cache
-  const attempts = await allAttempts();
-  const now = Date.now();
-  // decay weight: newer attempts count more
-  const buckets = new Map(); // key -> {w, c}
-  const topicBuckets = new Map();
-  for (const a of attempts) {
-    const key = a.skill ? `${a.topic}.${a.skill}` : a.topic;
-    const ageDays = Math.max(0, (now - (a.ts || now)) / DAY);
-    const w = Math.exp(-ageDays / 14);          // 2-week half-life-ish
-    const b = buckets.get(key) || { w: 0, c: 0 };
-    b.w += w * (a.correct ? 1 : 0);
-    b.c += w;
-    buckets.set(key, b);
-
-    const tb = topicBuckets.get(a.topic) || { w: 0, c: 0 };
-    tb.w += w * (a.correct ? 1 : 0);
-    tb.c += w;
-    topicBuckets.set(a.topic, tb);
+async function ensurePlanner() {
+  if (!_planner) {
+    _planner = new LearningPlanner();
+    await _planner.init();
+    _composer = new SessionComposer(_planner);
   }
-  const mastery = new Map();
-  for (const [key, b] of buckets) mastery.set(key, b.c > 0 ? b.w / b.c : 0.5);
-  const topicMastery = new Map();
-  for (const [key, b] of topicBuckets.entries()) topicMastery.set(key, b.c > 0 ? b.w / b.c : 0.5);
-  const skillMastery = new Map([...mastery.entries()].filter(([key]) => key.includes('.')));
-  return { mastery, topicMastery, skillMastery, attempts };
+  return { planner: _planner, composer: _composer };
 }
 
-// Which difficulty band targets ~65% correctness for this learner?
-function targetDifficulty(mastery, topicKey) {
-  const m = mastery.get(topicKey) ?? 0.5;
-  // map mastery 0..1 -> difficulty 1..5; weak => easier start, strong => harder
-  return Math.max(1, Math.min(5, Math.round(1 + m * 4)));
-}
-
-// Last time each question id was shown + correctness, for spacing.
-function recentMap(attempts) {
-  const m = new Map(); // qid -> {last, correct}
+async function getRecentMap() {
+  const attempts = await allAttempts();
+  const m = new Map();
   for (const a of attempts) {
     const e = m.get(a.question_id);
-    if (!e || a.ts > e.last) m.set(a.question_id, { last: a.ts, correct: a.correct });
+    if (!e || a.ts > e.last) m.set(a.question_id, { last: a.ts, correct: a.correct, topic: a.topic });
   }
   return m;
 }
 
-// Spacing score: 1 = show now, 0 = recently shown.
-function spacingScore(qid, recent, now) {
-  const e = recent.get(qid);
-  if (!e) return 1;                       // never seen -> fresh
-  const days = (now - e.last) / DAY;
-  const interval = e.correct ? 3 * Math.pow(1.6, streakAfter(qid, recent)) : 0.5;
-  return Math.min(1, days / interval);
-}
-// crude streak: count of trailing correct for this q
-function streakAfter(qid, recent) {
-  return recent.get(qid)?.correct ? 1 : 0; // simplified; could extend
-}
-
-/**
- * Pick N questions for a session.
- * @param {object} opts
- *   subject : 'hi'|'en'|undefined  (filter)
- *   topic   : topicId|undefined     (filter)
- *   n       : number to pick
- *   pool    : array of questions (defaults to QUESTIONS, filtered)
- */
-export async function pick({ subject, topic, n = 20, pool } = {}) {
-  const { mastery, attempts } = await computeMastery();
-  const now = Date.now();
-  const recent = recentMap(attempts);
-
-  const generated = await getGeneratedBank();
-  let candidates = pool ?? [...QUESTIONS, ...generated];
-  if (subject) candidates = candidates.filter(q => {
-    const t = TOPICS.find(x => x.id === q.topic);
-    return t && t.subject === subject;
-  });
-  if (topic) candidates = candidates.filter(q => q.topic === topic);
-
-  if (candidates.length === 0) return [];
-  if (candidates.length <= n) return shuffle(candidates);
-
-  // weight each candidate
-  const weighted = candidates.map(q => {
-    const tKey = q.skill ? `${q.topic}.${q.skill}` : q.topic;
-    const m = mastery.get(tKey) ?? 0.5;
-    const weakness = 1 - m;                       // drill weak topics
-    const diffFit = 1 - Math.abs((q.difficulty - targetDifficulty(mastery, tKey)) / 5);
-    const space = spacingScore(q.id, recent, now);
-    const w = (0.5 * weakness + 0.3 * diffFit + 0.2 * space) + 0.05;
-    return { q, w };
-  });
-
-  // weighted lottery without replacement
-  const chosen = [];
-  const avail = [...weighted];
-  while (chosen.length < n && avail.length) {
-    const total = avail.reduce((s, x) => s + x.w, 0);
-    let r = Math.random() * total;
-    let i = 0;
-    for (; i < avail.length; i++) { r -= avail[i].w; if (r <= 0) break; }
-    chosen.push(avail[i].q);
-    avail.splice(i, 1);
-  }
-  return chosen;
+async function getWrongIds() {
+  const attempts = await allAttempts();
+  return [...new Set(attempts.filter(a => !a.correct).map(a => a.question_id))];
 }
 
 function shuffle(arr) {
@@ -136,9 +46,109 @@ function shuffle(arr) {
   return a;
 }
 
-/** Mock-test selection: mimic the real paper's structure. */
+export async function computeMastery() {
+  await fetchAttempts();
+  const topicStats = await getAllTopicStats();
+  const mastery = new Map();
+  const topicMastery = new Map();
+  for (const [topic, acc] of Object.entries(topicStats)) {
+    const m = acc.total > 0 ? acc.correct / acc.total : 0.5;
+    mastery.set(topic, m);
+    topicMastery.set(topic, m);
+  }
+  return { mastery, topicMastery, skillMastery: new Map(), attempts: [] };
+}
+
+export async function pick({ subject, topic, n = 20, pool } = {}) {
+  try {
+    const { planner, composer } = await ensurePlanner();
+    const plan = await planner.createPlan();
+    const session = await composer.buildSession(plan);
+
+    if (session.questions.length >= n) {
+      let filtered = session.questions;
+      if (subject) filtered = filtered.filter(q => {
+        const t = TOPICS.find(x => x.id === q.topic);
+        return t && t.subject === subject;
+      });
+      if (topic) filtered = filtered.filter(q => q.topic === topic);
+      if (filtered.length >= n) return shuffle(filtered).slice(0, n);
+      return shuffle(session.questions).slice(0, n);
+    }
+
+    return fallbackPick({ subject, topic, n, pool });
+  } catch (e) {
+    logError(e, { file: 'engine.js', func: 'pick', action: 'planner pick', source: 'core', context: { subject, topic, n } });
+    return fallbackPick({ subject, topic, n, pool });
+  }
+}
+
+async function fallbackPick({ subject, topic, n = 20, pool } = {}) {
+  try {
+    const generated = await getGeneratedBank();
+    let candidates = pool ?? [...QUESTIONS, ...generated];
+    if (subject) candidates = candidates.filter(q => {
+      const t = TOPICS.find(x => x.id === q.topic);
+      return t && t.subject === subject;
+    });
+    if (topic) candidates = candidates.filter(q => q.topic === topic);
+    if (candidates.length === 0) return [];
+    if (candidates.length <= n) return shuffle(candidates);
+
+    const recent = await getRecentMap();
+    const wrongIds = new Set(await getWrongIds());
+    const topicStats = await getAllTopicStats();
+    const now = Date.now();
+    const dueQs = []; const mistakeQs = []; const weakQs = []; const randomQs = [];
+
+    for (const q of candidates) {
+      const rec = recent.get(q.id);
+      const acc = topicStats[q.topic] || { correct: 0, total: 0, lastTs: 0, streak: 0, lastWrong: 0 };
+      const mastery = acc.total > 0 ? acc.correct / acc.total : 0.5;
+      const daysSinceLast = rec ? (now - rec.last) / DAY : 999;
+      const interval = rec?.correct ? 3 * Math.pow(1.6, rec.correct ? 1 : 0) : 0.5;
+      const isDue = rec && daysSinceLast >= interval;
+      const isNeverSeen = !rec;
+      const isWrong = wrongIds.has(q.id);
+      const isWeak = mastery < 0.5;
+
+      if (isDue || isNeverSeen) dueQs.push(q);
+      else if (isWrong) mistakeQs.push(q);
+      else if (isWeak) weakQs.push(q);
+      else randomQs.push(q);
+    }
+
+    const chosen = [];
+    const takeFrom = (arr, pct) => {
+      const need = Math.max(1, Math.round(n * pct));
+      const taken = shuffle(arr).slice(0, Math.min(need, arr.length));
+      chosen.push(...taken);
+      return taken.length;
+    };
+
+    takeFrom(dueQs, 0.4);
+    takeFrom(mistakeQs, 0.3);
+    takeFrom(weakQs, 0.2);
+
+    const remaining = n - chosen.length;
+    if (remaining > 0) chosen.push(...shuffle(randomQs).slice(0, Math.min(remaining, randomQs.length)));
+    if (chosen.length < n) {
+      const used = new Set(chosen.map(q => q.id));
+      const fill = shuffle(candidates).filter(q => !used.has(q.id));
+      chosen.push(...fill.slice(0, n - chosen.length));
+    }
+    return shuffle(chosen).slice(0, n);
+  } catch (e) {
+    logError(e, { file: 'engine.js', func: 'fallbackPick', action: 'select questions', source: 'core' });
+    const fallback = pool ?? [...QUESTIONS];
+    return shuffle(fallback).slice(0, n);
+  }
+}
+
+export function getPlanner() { return _planner; }
+export function getComposer() { return _composer; }
+
 export async function pickMock(structure = DEFAULT_MOCK_STRUCTURE) {
-  // structure: [{subject, topic?, n}]
   const out = [];
   for (const seg of structure) {
     const qs = await pick({ subject: seg.subject, topic: seg.topic, n: seg.n });
@@ -147,9 +157,6 @@ export async function pickMock(structure = DEFAULT_MOCK_STRUCTURE) {
   return shuffle(out);
 }
 
-// Real paper: 100 General Hindi + 100 General English. As the PYQ
-// analysis refines topic distribution, this is updated to mirror it
-// exactly (e.g. X comprehension, Y grammar, Z vocab per subject).
 export const DEFAULT_MOCK_STRUCTURE = [
   { subject: 'hi', n: 100 },
   { subject: 'en', n: 100 },

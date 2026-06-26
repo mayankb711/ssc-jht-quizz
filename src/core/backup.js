@@ -1,27 +1,31 @@
 ﻿import { allAttempts, allGeneratedQuestions, kvGet, kvSet, replaceAttempts } from '../store/local.js';
-import { getReports } from './diagnostics.js';
+import { getReports, logError } from './diagnostics.js';
+import { APP, KV_KEYS, VERSION } from '../config/app.js';
 import { QUESTIONS } from '../data/questions.js';
 
 export async function exportBackupPayload() {
-  return {
-    v: 2,
-    exportedAt: new Date().toISOString(),
-    attempts: await allAttempts(),
-    generatedQuestions: await allGeneratedQuestions(),
-    errorReports: await getReports(),
-    settings: {
-      theme: await kvGet('theme', 'dark'),
-      cf_account: await kvGet('cf_account', ''),
-      cf_token: await kvGet('cf_token', ''),
-      cf_model: await kvGet('cf_model', '@cf/meta/llama-3-8b-instruct'),
-      neuron_cap: await kvGet('neuron_cap', 8000),
-      fb_project_id: await kvGet('fb_project_id', ''),
-      fb_api_key: await kvGet('fb_api_key', ''),
-    },
-    sourceCounts: {
-      curatedQuestions: QUESTIONS.length,
-    },
-  };
+  try {
+    return {
+      v: VERSION.backup,
+      exportedAt: new Date().toISOString(),
+      attempts: await allAttempts(),
+      generatedQuestions: await allGeneratedQuestions(),
+      errorReports: await getReports(),
+      settings: {
+        [KV_KEYS.theme]: await kvGet(KV_KEYS.theme, APP.defaultTheme),
+        [KV_KEYS.cfAccount]: await kvGet(KV_KEYS.cfAccount, ''),
+        [KV_KEYS.cfToken]: await kvGet(KV_KEYS.cfToken, ''),
+        [KV_KEYS.cfModel]: await kvGet(KV_KEYS.cfModel, '@cf/meta/llama-3-8b-instruct'),
+        [KV_KEYS.neuronCap]: await kvGet(KV_KEYS.neuronCap, APP.defaultNeuronCap),
+        [KV_KEYS.fbProjectId]: await kvGet(KV_KEYS.fbProjectId, ''),
+        [KV_KEYS.fbApiKey]: await kvGet(KV_KEYS.fbApiKey, ''),
+      },
+      sourceCounts: { curatedQuestions: QUESTIONS.length },
+    };
+  } catch (e) {
+    logError(e, { file: 'backup.js', func: 'exportBackupPayload', source: 'core', action: 'export backup' });
+    throw e;
+  }
 }
 
 export async function downloadBackup() {
@@ -36,16 +40,29 @@ export async function downloadBackup() {
 }
 
 export async function importBackupPayload(payload) {
-  if (!payload || typeof payload !== 'object') throw new Error('Invalid backup file');
+  if (!payload || typeof payload !== 'object') {
+    const err = new Error('Invalid backup file');
+    logError(err, { file: 'backup.js', func: 'importBackupPayload', source: 'core', action: 'validate backup payload' });
+    throw err;
+  }
 
   const settings = payload.settings || {};
-  if (settings.theme) await kvSet('theme', settings.theme);
-  if (settings.cf_account != null) await kvSet('cf_account', String(settings.cf_account));
-  if (settings.cf_token != null) await kvSet('cf_token', String(settings.cf_token));
-  if (settings.cf_model != null) await kvSet('cf_model', String(settings.cf_model));
-  if (settings.neuron_cap != null) await kvSet('neuron_cap', Number(settings.neuron_cap) || 8000);
-  if (settings.fb_project_id != null) await kvSet('fb_project_id', String(settings.fb_project_id));
-  if (settings.fb_api_key != null) await kvSet('fb_api_key', String(settings.fb_api_key));
+  const kvWrites = [
+    [KV_KEYS.theme, settings.theme],
+    [KV_KEYS.cfAccount, settings.cf_account],
+    [KV_KEYS.cfToken, settings.cf_token],
+    [KV_KEYS.cfModel, settings.cf_model],
+    [KV_KEYS.neuronCap, settings.neuron_cap],
+    [KV_KEYS.fbProjectId, settings.fb_project_id],
+    [KV_KEYS.fbApiKey, settings.fb_api_key],
+  ];
+  for (const [key, val] of kvWrites) {
+    if (val != null) {
+      try { await kvSet(key, val); } catch (e) {
+        logError(e, { file: 'backup.js', func: 'importBackupPayload', source: 'core', action: 'import setting ' + key });
+      }
+    }
+  }
 
   const imported = {
     attempts: Array.isArray(payload.attempts) ? payload.attempts.length : 0,
@@ -53,23 +70,32 @@ export async function importBackupPayload(payload) {
     errorReports: Array.isArray(payload.errorReports) ? payload.errorReports.length : 0,
   };
 
-  // We intentionally keep this import lightweight and forward-compatible.
-  // Existing stores are left intact; imported data is merged by writing the
-  // latest available copies into the shared stores.
   if (Array.isArray(payload.attempts)) {
-    await replaceAttempts(payload.attempts);
+    try { await replaceAttempts(payload.attempts); } catch (e) {
+      logError(e, { file: 'backup.js', func: 'importBackupPayload', source: 'core', action: 'replace attempts from backup' });
+    }
   }
 
   if (Array.isArray(payload.generatedQuestions)) {
-    const { upsertGeneratedQuestion } = await import('../store/local.js');
+    const { upsertGeneratedQuestion, allGeneratedQuestions, kvSet } = await import('../store/local.js');
+    const existingIds = new Set((await allGeneratedQuestions()).map(q => q.id));
+    const importedIds = new Set(payload.generatedQuestions.map(q => q.id));
     for (const q of payload.generatedQuestions) {
-      if (q && q.id) await upsertGeneratedQuestion(q);
+      if (q && q.id) {
+        try { await upsertGeneratedQuestion(q); } catch (e) {
+          logError(e, { file: 'backup.js', func: 'importBackupPayload', source: 'core', action: 'import generated question ' + q.id });
+        }
+      }
     }
   }
 
   if (Array.isArray(payload.errorReports)) {
-    const { setReports } = await import('./diagnostics.js');
-    await setReports(payload.errorReports);
+    try {
+      const { setReports } = await import('./diagnostics.js');
+      await setReports(payload.errorReports);
+    } catch (e) {
+      logError(e, { file: 'backup.js', func: 'importBackupPayload', source: 'core', action: 'import error reports' });
+    }
   }
 
   return imported;

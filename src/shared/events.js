@@ -54,6 +54,24 @@ export const DomainEvents = {
   // System events
   APP_READY: 'app.ready',
   NAVIGATION_CHANGED: 'navigation.changed',
+
+  // Bookmark events
+  BOOKMARK_CHANGED: 'bookmark.changed',
+
+  // Confidence events
+  CONFIDENCE_RECORDED: 'confidence.recorded',
+
+  // Search events
+  SEARCH_REQUESTED: 'search.requested',
+
+  // Topic stats events
+  TOPIC_ACCUMULATOR_UPDATED: 'topic_accumulator.updated',
+
+  // Session events
+  SESSION_STATS_UPDATED: 'session_stats.updated',
+
+  // Queue events
+  QUEUE_UPDATED: 'queue.updated',
 };
 
 /**

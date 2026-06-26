@@ -5,26 +5,54 @@
    ============================================================ */
 
 const DB = 'sscjht';
-const VER = 2;
+const VER = 3;
 let _db = null;
 
 function open() {
   if (_db) return Promise.resolve(_db);
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB, VER);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (e) => {
       const db = req.result;
-      if (!db.objectStoreNames.contains('kv'))    db.createObjectStore('kv');
-      if (!db.objectStoreNames.contains('attempts')) db.createObjectStore('attempts', { keyPath: 'id' });
-      if (!db.objectStoreNames.contains('cache')) db.createObjectStore('cache');
-      if (!db.objectStoreNames.contains('generated_questions')) db.createObjectStore('generated_questions', { keyPath: 'id' });
+      const oldVer = e.oldVersion;
+      if (oldVer < 1) {
+        db.createObjectStore('kv');
+        db.createObjectStore('attempts', { keyPath: 'id' });
+        db.createObjectStore('cache');
+        db.createObjectStore('generated_questions', { keyPath: 'id' });
+      }
+      if (oldVer < 2) {
+        if (!db.objectStoreNames.contains('generated_questions')) {
+          db.createObjectStore('generated_questions', { keyPath: 'id' });
+        }
+      }
+      if (oldVer < 3) {
+        const kv = e.target.transaction.objectStore('kv');
+        kv.put(3, 'db_schema_version');
+      }
     };
     req.onsuccess = () => { _db = req.result; resolve(_db); };
     req.onerror = () => reject(req.error);
   });
 }
 
-async function tx(store, mode) {
+function stampVersion(obj, version) {
+  if (obj && typeof obj === 'object') {
+    obj.__v = version || 1;
+  }
+  return obj;
+}
+
+export async function kvDelete(key) {
+  const s = await tx('kv', 'readwrite');
+  return new Promise((res, rej) => {
+    const r = s.delete(key);
+    r.onsuccess = () => res(true);
+    r.onerror = () => rej(r.error);
+  });
+}
+
+export async function tx(store, mode) {
   const db = await open();
   return db.transaction(store, mode).objectStore(store);
 }
@@ -49,6 +77,7 @@ export async function kvSet(key, val) {
 
 // ---- attempts (every answered question) ----
 export async function addAttempt(a) {
+  stampVersion(a, 1);
   const s = await tx('attempts', 'readwrite');
   return new Promise((res, rej) => {
     const r = s.add(a);
@@ -76,6 +105,7 @@ export async function replaceAttempts(attempts) {
   });
   for (const attempt of attempts || []) {
     if (!attempt || !attempt.id) continue;
+    stampVersion(attempt, 1);
     await new Promise((res, rej) => {
       const r = store.put(attempt);
       r.onsuccess = () => res();
@@ -104,16 +134,13 @@ export async function cacheSet(key, val) {
 
 // ---- generated questions (AI-backed, persisted locally) ----
 export async function upsertGeneratedQuestion(question) {
-  try {
-    const s = await tx('generated_questions', 'readwrite');
-    return new Promise((res, rej) => {
-      const r = s.put(question);
-      r.onsuccess = () => res(question);
-      r.onerror = () => rej(r.error);
-    });
-  } catch {
-    return question;
-  }
+  stampVersion(question, 1);
+  const s = await tx('generated_questions', 'readwrite');
+  return new Promise((res, rej) => {
+    const r = s.put(question);
+    r.onsuccess = () => res(question);
+    r.onerror = () => rej(r.error);
+  });
 }
 
 export async function allGeneratedQuestions() {

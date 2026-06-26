@@ -174,8 +174,8 @@ export class IndexedDBSettingsRepository extends ISettingsRepository {
       cf_token: await this.get('cf_token', ''),
       cf_model: await this.get('cf_model', '@cf/meta/llama-3-8b-instruct'),
       neuron_cap: await this.get('neuron_cap', 8000),
-      sb_url: await this.get('sb_url', ''),
-      sb_key: await this.get('sb_key', ''),
+      fb_project_id: await this.get('fb_project_id', ''),
+      fb_api_key: await this.get('fb_api_key', ''),
     };
     
     return this.validator.validateRead(settings).unwrap();
@@ -191,8 +191,8 @@ export class IndexedDBSettingsRepository extends ISettingsRepository {
   }
 
   async delete(key) {
-    const { kvSet } = await import('../../store/local.js');
-    await kvSet(key, null);
+    const { kvDelete } = await import('../../store/local.js');
+    await kvDelete(key);
   }
 }
 

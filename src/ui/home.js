@@ -1,150 +1,173 @@
-/*
-  home.js — landing screen. Pick a mode; see quick stats.
-  Uses CSS classes from primitives for all styling.
-*/
-
 import { summary } from '../core/progress.js';
-import { getUsage } from '../ai/client.js';
-import { allAttempts, kvGet } from '../store/local.js';
+import { pick } from '../core/engine.js';
+import { LearningPlanner } from '../learning/planner.js';
+import { AnalyticsEngine } from '../learning/analytics.js';
+import { loadProfile, predictScore, getDueReviews, getWeakestSkills } from '../learning/profile.js';
+import { logError } from '../core/diagnostics.js';
+
+let _analytics = null;
+let _planner = null;
 
 export async function mount(wrap, params, { topbar, go }) {
-  wrap.innerHTML = `${topbar('SSC JHT', 'Paper 1 practice')}
-    <div id="home-body"><div class="ui-spinner"></div></div>`;
+  wrap.innerHTML = `${topbar('SSC JHT Quiz', 'Paper 1')}<div id="qbody"><div class="ui-spinner"></div></div>`;
+  const body = document.getElementById('qbody');
 
-  const s = await summary();
-  const u = await getUsage();
-  const acc = s.total ? Math.round(s.accuracy * 100) : 0;
-  const focus = s.topics.slice(0, 4);
+  try {
+    _planner = new LearningPlanner();
+    await _planner.init();
+    _analytics = new AnalyticsEngine();
+    await _analytics.init();
 
-  document.getElementById('home-body').innerHTML = `
-    <div class="ui-card ui-gap-bottom">
-      <div class="ui-card__header">
-        <h2 class="ui-section-head__title">Welcome back</h2>
-      </div>
-      <div class="ui-card__body">
-        <div class="ui-stat-row ui-mb-lg">
-          <div class="ui-stat">
-            <div class="ui-stat__value">${s.total}</div>
-            <div class="ui-stat__label">Answered</div>
-          </div>
-          <div class="ui-stat">
-            <div class="ui-stat__value">${acc}%</div>
-            <div class="ui-stat__label">Accuracy</div>
-            <div class="ui-stat__sub">Overall correctness</div>
-          </div>
-          <div class="ui-stat">
-            <div class="ui-stat__value">${s.streakDays}</div>
-            <div class="ui-stat__label">Streak</div>
-            <div class="ui-stat__sub">Active days</div>
-          </div>
-          <div class="ui-stat">
-            <div class="ui-stat__value">${u.used}/${u.cap}</div>
-            <div class="ui-stat__label">AI today</div>
-            <div class="ui-stat__sub">Neurons used</div>
-          </div>
-        </div>
-        <div class="ui-ring-row">
-          <div class="ui-ring ui-ring--glow" style="--p: ${Math.min(100, (u.used / u.cap) * 100)};">
-            <div class="ui-ring__inner">${Math.round((u.used / u.cap) * 100)}%</div>
-          </div>
-          <div>
-            <p class="ui-muted">Weakest topics appear at top in Progress. The adaptive engine drills those first.</p>
-            <div class="ui-btn-row ui-mt-md">
-              <span class="ui-badge ui-badge--good">Offline-first</span>
-              <span class="ui-badge ui-badge--neutral">Adaptive</span>
-              <span class="ui-badge ui-badge--neutral">Paper 1</span>
+    const daily = await _analytics.getDailyProgress();
+    const profile = await loadProfile();
+    const predictedScore = predictScore(profile) || 0;
+    const dueReviews = getDueReviews(profile);
+    const weakest = getWeakestSkills(profile, 3);
+
+    const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+
+    const isMorning = hour < 12;
+    const themeEmoji = isMorning ? '🌅' : '🌙';
+
+    body.innerHTML = `
+      <div class="ui-card" style="margin-bottom: 16px; background: linear-gradient(135deg, var(--accent)10, var(--accent-2)05); border: 1px solid var(--accent)30;">
+        <div class="ui-card__body" style="padding: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <p style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 4px;">${themeEmoji} ${greeting}</p>
+              <p style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 8px;">${todayStr}</p>
+              <div style="display: flex; align-items: baseline; gap: 4px;">
+                <span style="font-size: 2.2rem; font-weight: 750; color: var(--accent);">${predictedScore}</span>
+                <span style="font-size: 1rem; color: var(--text-dim);">/ 200</span>
+              </div>
+              <p style="font-size: 0.8rem; color: var(--text-dim);">Predicted SSC JHT Score</p>
+            </div>
+            <div style="text-align: right;">
+              <div class="ui-progress-ring" style="width: 56px; height: 56px;">
+                ${progressRingSvg(profile.streak.current / Math.max(profile.streak.longest, 1) * 100)}
+                <span class="ui-progress-ring__label" style="font-size: 0.85rem;">${profile.streak.current}</span>
+              </div>
+              <p style="font-size: 0.7rem; color: var(--text-dim); margin-top: 4px;">day streak</p>
             </div>
           </div>
         </div>
       </div>
-    </div>
 
-        <div class="ui-row ui-mb-md" style="display: flex; gap: 12px; flex-wrap: wrap;">
-      <div class="ui-card" style="flex: 1; min-width: 140px;">
-        <div class="ui-stat">
-          <div class="ui-stat__value" id="today-count">-</div>
-          <div class="ui-stat__label">Today</div>
-          <div class="ui-stat__sub">of goal</div>
-        </div>
-      </div>
-      <div class="ui-card" style="flex: 1; min-width: 140px;">
-        <div class="ui-stat">
-          <div class="ui-stat__value" id="due-count">-</div>
-          <div class="ui-stat__label">Due</div>
-          <div class="ui-stat__sub">for review</div>
-        </div>
-      </div>
-      <div class="ui-card" style="flex: 1; min-width: 140px;">
-        <div class="ui-stat">
-          <div class="ui-stat__value" id="bm-count">-</div>
-          <div class="ui-stat__label">Bookmarked</div>
-          <div class="ui-stat__sub">questions</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="ui-section-head">
-      <h2 class="ui-section-head__title">Choose a mode</h2>
-      <span class="ui-muted">Start in the format that matches your study goal</span>
-    </div>
-    <div class="grid">
-      <div class="ui-card ui-card--interactive ui-card--glow mode-card" data-mode="mock">
-        <span class="emoji">📝</span>
-        <strong>Full Mock Test</strong>
-        <span class="desc">200 Q, 2 hours, negative marking.</span>
-      </div>
-      <div class="ui-card ui-card--interactive ui-card--glow mode-card" data-mode="quick">
-              <div class="ui-card ui-card--interactive ui-card--glow mode-card" data-mode="bookmarked">
-        <span class="emoji">📌</span>
-        <strong>Bookmarked</strong>
-        <span class="desc">Review questions you have bookmarked.</span>
-      </div>
-      <div class="ui-card ui-card--interactive ui-card--glow mode-card" data-mode="mistakes">
-        <span class="emoji"></span>
-        <strong>Review Mistakes</strong>
-        <span class="desc">Re-attempt questions you got wrong before.</span>
-      </div>
-    </div>
-
-    <div class="ui-card ui-gap-top">
-      <div class="ui-card__header">
-        <h2 class="ui-section-head__title">Weakest topics to focus</h2>
-      </div>
-      <div class="ui-card__body">
-        ${focus.length ? `
-          <div class="ui-list">
-            ${focus.map(t => `
-              <div class="ui-list-item">
-                <span>${t.topic.replace(/_/g, ' ')}</span>
-                <span class="ui-muted">${Math.round(t.accuracy * 100)}% · ${t.correct}/${t.total}</span>
+      <div class="ui-card" style="margin-bottom: 16px;">
+        <div class="ui-card__body" style="padding: 16px 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 2rem;">🎯</span>
+                <div>
+                  <p style="font-weight: 600;">Today's Goal</p>
+                  <p style="font-size: 0.8rem; color: var(--text-dim);">${Math.max(20 - daily.total, 0)} questions remaining • est. ${Math.max(10, Math.round((20 - daily.total) * 1.5))} min</p>
+                </div>
               </div>
-            `).join('')}
+            </div>
+            <span style="font-size: 1.5rem; font-weight: 700; color: var(--accent);">${daily.total}<span style="font-size: 0.9rem; color: var(--text-dim);">/20</span></span>
           </div>
-        ` : `
-          <div class="ui-empty">
-            <p class="ui-muted">No data yet — take a quiz!</p>
+          <div class="ui-progress__bar" style="margin-top: 10px;">
+            <span class="ui-progress__bar-fill" style="width: ${Math.min(100, (daily.total / 20) * 100)}%;"></span>
           </div>
-        `}
+        </div>
       </div>
-    </div>`;
 
-  // populate daily goal, due count, bookmark count
-  ;(async () => {
-    const goal = await kvGet('daily_goal', 30);
-    const all = await allAttempts();
-    const todayStr = new Date().toDateString();
-    const todayCount = all.filter(function(a) { return new Date(a.ts).toDateString() === todayStr; }).length;
-    document.getElementById('today-count').textContent = todayCount + '/' + goal;
-    const due = all.filter(function(a) { return !a.correct; }).length;
-    document.getElementById('due-count').textContent = due > 0 ? due : '0';
-    const bm = await kvGet('bookmarks', []);
-    document.getElementById('bm-count').textContent = bm.length;
-  })();
+      <div style="display: flex; gap: 10px; margin-bottom: 16px;">
+        <button class="ui-btn" id="start-session" style="flex: 2; padding: 14px; font-size: 1rem;">
+          🚀 Start Today's Session
+        </button>
+        <button class="ui-btn ui-btn--secondary" id="quick-quiz" style="flex: 1; padding: 14px;">
+          ⚡ Quick
+        </button>
+      </div>
 
-  wrap.querySelectorAll('[data-mode]').forEach(el => {
-    el.addEventListener('click', () => {
-      const m = el.getAttribute('data-mode');
-      go('quiz', { mode: m });
+      ${dueReviews.length > 0 ? `
+        <div class="ui-card" style="margin-bottom: 12px; border-left: 3px solid #f39c12;">
+          <div class="ui-card__body" style="padding: 12px 16px;">
+            <p style="font-size: 0.85rem; font-weight: 600; color: #f39c12;">🔄 ${dueReviews.length} reviews due</p>
+            <p style="font-size: 0.75rem; color: var(--text-dim);">Spaced repetition items need attention</p>
+          </div>
+        </div>
+      ` : ''}
+
+      ${weakest.length > 0 ? `
+        <div class="ui-card" style="margin-bottom: 12px; border-left: 3px solid #e74c3c;">
+          <div class="ui-card__body" style="padding: 12px 16px;">
+            <p style="font-size: 0.85rem; font-weight: 600; color: #e74c3c;">📉 Weakest areas</p>
+            <ul style="margin: 6px 0 0 16px; font-size: 0.8rem; color: var(--text-dim);">
+              ${weakest.map(w => `<li>${w.id} (${Math.round(w.mastery * 100)}% mastery)</li>`).join('')}
+            </ul>
+          </div>
+        </div>
+      ` : ''}
+
+      <div class="ui-card" style="margin-bottom: 16px;">
+        <div class="ui-card__header" style="padding: 12px 16px 0;">
+          <h3 class="ui-section-head__title" style="font-size: 0.9rem;">Practice Modes</h3>
+        </div>
+        <div class="ui-card__body" style="padding: 12px 16px 16px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <button class="ui-btn ui-btn--secondary" data-mode="mock" style="padding: 10px; font-size: 0.8rem;">📝 Mock Test</button>
+            <button class="ui-btn ui-btn--secondary" data-mode="topic" style="padding: 10px; font-size: 0.8rem;">📚 Topic Practice</button>
+            <button class="ui-btn ui-btn--secondary" data-mode="mistakes" style="padding: 10px; font-size: 0.8rem;">🔄 Review Mistakes</button>
+            <button class="ui-btn ui-btn--secondary" data-mode="bookmarked" style="padding: 10px; font-size: 0.8rem;">🔖 Bookmarks</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px;">
+        <div class="ui-card" style="text-align: center; padding: 12px 8px;">
+          <p style="font-size: 1.3rem; font-weight: 700; color: var(--accent);">${daily.accuracy > 0 ? Math.round(daily.accuracy * 100) : 0}%</p>
+          <p style="font-size: 0.65rem; color: var(--text-dim);">Today accuracy</p>
+        </div>
+        <div class="ui-card" style="text-align: center; padding: 12px 8px;">
+          <p style="font-size: 1.3rem; font-weight: 700; color: var(--accent-2);">${daily.total}</p>
+          <p style="font-size: 0.65rem; color: var(--text-dim);">Questions done</p>
+        </div>
+        <div class="ui-card" style="text-align: center; padding: 12px 8px;">
+          <p style="font-size: 1.3rem; font-weight: 700; color: var(--accent-2);">${dueReviews.length}</p>
+          <p style="font-size: 0.65rem; color: var(--text-dim);">Reviews due</p>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('start-session')?.addEventListener('click', () => go('quiz', { mode: 'planned' }));
+    document.getElementById('quick-quiz')?.addEventListener('click', () => go('quiz', { mode: 'quick' }));
+    body.querySelectorAll('[data-mode]').forEach(el => {
+      el.addEventListener('click', () => go('quiz', { mode: el.dataset.mode }));
     });
-  });
+
+  } catch (e) {
+    logError(e, { file: 'home.js', func: 'mount', action: 'render coach dashboard', source: 'ui', recoverySteps: ['Reload the page', 'Check IndexedDB is available'] });
+    body.innerHTML = `
+      <div class="ui-card">
+        <div class="ui-card__body" style="text-align: center; padding: 40px 20px;">
+          <p style="font-size: 2rem;">📚</p>
+          <h3>SSC JHT Quiz</h3>
+          <p class="ui-muted" style="margin: 8px 0;">Practice for Paper 1 — General Hindi & English</p>
+          <div style="display: flex; gap: 8px; justify-content: center; margin-top: 16px; flex-wrap: wrap;">
+            <button class="ui-btn" id="start-fallback" style="padding: 12px 24px;">Start Quiz</button>
+            <button class="ui-btn ui-btn--secondary" data-mode="mock" style="padding: 12px 24px;">Mock Test</button>
+            <button class="ui-btn ui-btn--secondary" data-mode="topic" style="padding: 12px 24px;">Topic Practice</button>
+            <button class="ui-btn ui-btn--secondary" data-mode="mistakes" style="padding: 12px 24px;">Mistakes</button>
+          </div>
+        </div>
+      </div>`;
+    document.getElementById('start-fallback')?.addEventListener('click', () => go('quiz', { mode: 'quick' }));
+    body.querySelectorAll('[data-mode]').forEach(el => {
+      el.addEventListener('click', () => go('quiz', { mode: el.dataset.mode }));
+    });
+  }
+}
+
+function progressRingSvg(pct) {
+  const r = 24, circ = 2 * Math.PI * r;
+  const offset = circ - (Math.min(pct, 100) / 100) * circ;
+  return `<svg class="ui-progress-ring__svg" viewBox="0 0 56 56" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: rotate(-90deg);">
+    <circle cx="28" cy="28" r="${r}" fill="none" stroke="var(--surface-2)" stroke-width="3"/>
+    <circle cx="28" cy="28" r="${r}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-dasharray="${circ}" stroke-dashoffset="${offset}" style="transition: stroke-dashoffset 0.3s;"/>
+  </svg>`;
 }

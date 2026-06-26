@@ -391,3 +391,41 @@ a:hover {
   align-items: flex-start;
   gap: 8px;
 }
+
+/* Progress ring */
+.ui-progress-ring {
+  width: 48px; height: 48px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 0.75rem; font-weight: 700; position: relative; flex-shrink: 0;
+}
+.ui-progress-ring__svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.ui-progress-ring__bg { fill: none; stroke: var(--surface-2); stroke-width: 3; }
+.ui-progress-ring__fill { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset 0.3s; }
+.ui-progress-ring__label { position: relative; z-index: 1; }
+
+/* Difficulty badge */
+.ui-diff-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; }
+.ui-diff-badge--1 { background: #27ae6020; color: #27ae60; }
+.ui-diff-badge--2 { background: #2ecc7120; color: #2ecc71; }
+.ui-diff-badge--3 { background: #f39c1220; color: #f39c12; }
+.ui-diff-badge--4 { background: #e67e2220; color: #e67e22; }
+.ui-diff-badge--5 { background: #e74c3c20; color: #e74c3c; }
+
+/* Confidence meter */
+.ui-confidence { margin: 12px 0; padding: 12px; background: var(--surface-2); border-radius: 8px; }
+.ui-confidence__label { font-size: 0.82rem; color: var(--text-dim); margin-bottom: 8px; }
+.ui-confidence__btns { display: flex; gap: 8px; }
+.ui-conf-btn { flex: 1; padding: 8px 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); font-size: 0.75rem; cursor: pointer; text-align: center; transition: all 0.15s; }
+.ui-conf-btn:hover { border-color: var(--accent); }
+.ui-conf-btn--active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.ui-conf-btn__emoji { display: block; font-size: 1.2rem; margin-bottom: 2px; }
+
+/* Keyboard hint */
+.ui-kbd-hint { display: inline-block; padding: 1px 5px; font-size: 0.65rem; font-family: monospace; background: var(--surface-2); border: 1px solid var(--border); border-radius: 3px; margin-left: 4px; color: var(--text-dim); }
+
+/* Error classification */
+.ui-error-classify { margin: 8px 0; }
+.ui-error-classify__btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ui-err-btn { padding: 4px 10px; font-size: 0.75rem; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text); cursor: pointer; transition: all 0.15s; }
+.ui-err-btn:hover { border-color: var(--accent-2); }
+.ui-err-btn--active { border-color: #e74c3c; background: #e74c3c20; color: #e74c3c; }
