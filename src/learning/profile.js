@@ -43,9 +43,7 @@ const DEFAULT_PROFILE = {
 };
 
 function domainId(topic) {
-  const prefixes = { hi: 'hindi', en: 'english' };
-  const subj = topic?.startsWith?.('en') ? 'english' : 'hindi';
-  return subj;
+  return topic?.startsWith?.('en') ? 'english' : 'hindi';
 }
 
 function defaultDomain(name) {

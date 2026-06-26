@@ -6,10 +6,34 @@ import { knowledgeGraph } from '../learning/graph.js';
 import { getMemoryTip } from './quiz.js';
 import { getAutoFlashcards } from '../learning/recommender.js';
 
+function modeLabel(m) {
+  return ({ mock: 'Mock Test', quick: 'Quick Quiz', planned: 'Planned Session', topic: 'Topic Practice', mistakes: 'Mistakes Review', bookmarked: 'Bookmarks Review' })[m] || 'Session';
+}
+
+function formatTime(ts) {
+  const d = new Date(ts);
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
 export async function mount(wrap, params, { topbar, go }) {
-  const mode = params.get('mode') || 'quick';
-  const key = mode === 'mock' ? 'lastMock' : 'lastSession';
-  const raw = sessionStorage.getItem(key);
+  const sessionParam = params.get('session');
+
+  // Load session data: either from a specific session key or from the default lastSession/lastMock
+  let raw;
+  let mode = params.get('mode') || 'quick';
+  let currentSessionId = null;
+
+  if (sessionParam) {
+    raw = sessionStorage.getItem(sessionParam);
+    currentSessionId = sessionParam;
+    if (raw) {
+      try { mode = JSON.parse(raw).mode || mode; } catch {}
+    }
+  } else {
+    const key = mode === 'mock' ? 'lastMock' : 'lastSession';
+    raw = sessionStorage.getItem(key);
+  }
+
   if (!raw) {
     wrap.innerHTML = `${topbar('Review', '')}<div id="qbody"><div class="ui-empty"><h3>No session data found.</h3><p class="ui-muted">Complete a quiz first.</p></div></div>`;
     return;
@@ -29,10 +53,28 @@ export async function mount(wrap, params, { topbar, go }) {
 
   await knowledgeGraph.init();
 
-  wrap.innerHTML = `${topbar('Review', mode === 'mock' ? 'Mock Test' : 'Session')}<div id="qbody"></div>`;
+  const sub = modeLabel(mode) + (currentSessionId ? '' : ' (latest)');
+  wrap.innerHTML = `${topbar('Review', sub)}<div id="qbody"></div>`;
   const body = document.getElementById('qbody');
 
+  // Read session history for navigation
+  const history = JSON.parse(sessionStorage.getItem('sessionHistory') || '[]');
+  const currentIdx = currentSessionId ? history.findIndex(h => h.id === currentSessionId) : -1;
+
   body.innerHTML = `
+    ${history.length > 1 ? `
+    <div class="ui-card" style="margin-bottom: 12px;">
+      <div class="ui-card__body" style="padding: 8px 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        ${currentIdx > 0 ? `<button class="ui-btn ui-btn--ghost" id="prev-session" style="font-size:0.8rem;">← Older</button>` : ''}
+        ${currentIdx >= 0 && currentIdx < history.length - 1 ? `<button class="ui-btn ui-btn--ghost" id="next-session" style="font-size:0.8rem;">Newer →</button>` : ''}
+        <select id="session-picker" class="ui-select" style="flex:1;min-width:120px;font-size:0.8rem;">
+          ${history.map((h, i) => `
+            <option value="${h.id}" ${i === currentIdx || (!currentSessionId && i === 0) ? 'selected' : ''}>
+              ${formatTime(h.ts)} — ${h.mode} (${h.correct}/${h.total})
+            </option>`).join('')}
+        </select>
+      </div>
+    </div>` : ''}
     <div class="ui-card" style="margin-bottom: 16px;">
       <div class="ui-card__body" style="padding: 16px 20px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -55,6 +97,25 @@ export async function mount(wrap, params, { topbar, go }) {
       <button class="ui-btn ui-btn--secondary" id="back-home">← Back to Home</button>
     </div>`;
 
+  // History navigation
+  if (currentIdx > 0) {
+    document.getElementById('prev-session')?.addEventListener('click', () => {
+      const prev = history[currentIdx - 1];
+      go('review', { mode: prev.mode, session: prev.id });
+    });
+  }
+  if (currentIdx >= 0 && currentIdx < history.length - 1) {
+    document.getElementById('next-session')?.addEventListener('click', () => {
+      const next = history[currentIdx + 1];
+      go('review', { mode: next.mode, session: next.id });
+    });
+  }
+  document.getElementById('session-picker')?.addEventListener('change', (e) => {
+    const entry = history.find(h => h.id === e.target.value);
+    if (entry) go('review', { mode: entry.mode, session: entry.id });
+  });
+
+  // Render question list
   const list = document.getElementById('review-list');
   for (let i = 0; i < attempts.length; i++) {
     const a = attempts[i];

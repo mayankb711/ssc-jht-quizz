@@ -1,4 +1,4 @@
-import { loadProfile, getDueReviews, getWeakestSkills, getPredictiveWeaknesses, predictScore } from './profile.js';
+import { loadProfile, saveProfile, getDueReviews, getWeakestSkills, getPredictiveWeaknesses, predictScore } from './profile.js';
 import { MemoryModel } from './memory.js';
 import { SKILL_DOMAINS } from './skills.js';
 import { knowledgeGraph } from './graph.js';
@@ -140,6 +140,7 @@ export class LearningPlanner {
     plan.estimatedMinutes = 45 - remainingMinutes;
     this.currentPlan = plan;
     this.profile.totalSessions++;
+    await saveProfile(this.profile);
     return plan;
   }
 

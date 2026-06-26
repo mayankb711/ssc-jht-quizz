@@ -610,14 +610,21 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
       await learningState.transition(LEARNING_STATES.REVIEW);
       await learningState.transition(LEARNING_STATES.COMPLETED);
     }
+    const sessionId = 'ses_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     if (state.mode === 'mock') {
       const result = await finishMock(state.questions, answers);
       sessionStorage.setItem('lastMock', JSON.stringify({ questions: state.questions, answers, result }));
-      go('review', { mode: 'mock' });
+      sessionStorage.setItem(sessionId, JSON.stringify({ questions: state.questions, answers, result, mode: 'mock', ts: Date.now() }));
     } else {
       sessionStorage.setItem('lastSession', JSON.stringify({ questions: state.questions, answers, mode: state.mode }));
-      go('review', { mode: state.mode });
+      sessionStorage.setItem(sessionId, JSON.stringify({ questions: state.questions, answers, mode: state.mode, ts: Date.now() }));
     }
+    const hist = JSON.parse(sessionStorage.getItem('sessionHistory') || '[]');
+    const correct = answers.filter((a, i) => a === state.questions[i]?.answer).length;
+    hist.unshift({ id: sessionId, mode: state.mode, ts: Date.now(), total: state.questions.length, correct, wrong: answers.filter((a, i) => a !== null && a !== state.questions[i]?.answer).length });
+    if (hist.length > 50) hist.length = 50;
+    sessionStorage.setItem('sessionHistory', JSON.stringify(hist));
+    go('review', { mode: state.mode });
   }
 
   function stopTimer() { if (timerHandle) clearInterval(timerHandle); }

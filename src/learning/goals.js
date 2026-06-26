@@ -128,7 +128,7 @@ async function getMockTrend() {
 
 export function getTodayGoal(profile) {
   const { idealCount, estimatedMinutes, energy, breakRecommended } = estimateIdealWorkload(profile);
-  const doneToday = profile.totalQuestions - (profile.totalQuestions - Object.values(profile.domains || {}).reduce((s, d) => s + d.attempts, 0));
+  const doneToday = Object.values(profile.domains || {}).reduce((s, d) => s + d.attempts, 0);
   const remaining = Math.max(0, idealCount - doneToday);
   return {
     target: idealCount,

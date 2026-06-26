@@ -27,7 +27,6 @@ export async function computeTopicVelocity() {
     const mastery = data.correct / data.total;
     const questionsUntilMastery = findMasteryMilestone(data.attempts, 0.7);
     const consecutiveForMastery = findConsecutiveMastery(data.attempts);
-    const bestStreak = findBestStreak(data.attempts);
     const recent5 = data.attempts.slice(-5);
     const recentAccuracy = recent5.length > 0 ? recent5.filter(a => a.correct).length / recent5.length : 0;
     const recentSpeed = recent5.filter(a => a.responseTime).reduce((s, a) => s + a.responseTime, 0) / Math.max(recent5.filter(a => a.responseTime).length, 1);
@@ -39,7 +38,6 @@ export async function computeTopicVelocity() {
       questionsAttempted: data.total,
       questionsUntilMastery,
       consecutiveForMastery,
-      bestStreak,
       recentAccuracy,
       recentSpeed,
       masteryTrend,
@@ -62,16 +60,6 @@ function findMasteryMilestone(attempts, threshold) {
 }
 
 function findConsecutiveMastery(attempts) {
-  let best = 0;
-  let current = 0;
-  for (const a of attempts) {
-    if (a.correct) { current++; best = Math.max(best, current); }
-    else current = 0;
-  }
-  return best;
-}
-
-function findBestStreak(attempts) {
   let best = 0;
   let current = 0;
   for (const a of attempts) {
