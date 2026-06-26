@@ -4,7 +4,7 @@
    ============================================================ */
 
 import { allAttempts, addAttempt, kvGet, kvSet } from '../store/local.js';
-import { push as sbPush } from '../store/supabase.js';
+import { push as sbPush, getStatus as sbStatus } from '../store/supabase.js';
 
 let _idc = 0;
 function newId() { _idc++; return `${Date.now().toString(36)}-${_idc}-${Math.random().toString(36).slice(2,7)}`; }
@@ -23,8 +23,8 @@ export async function record({ question, chosen, mode }) {
     mode: mode || 'practice',
   };
   await addAttempt(attempt);
-  // best-effort cloud push; failures are silent (offline-first)
-  sbPush().catch(() => {});
+  // best-effort cloud sync (only if configured and signed in)
+  if (sbStatus().signedIn) sbPush().catch(() => {});
   return attempt;
 }
 

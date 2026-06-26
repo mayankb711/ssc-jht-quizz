@@ -3,7 +3,7 @@
 */
 
 import { kvGet } from './store/local.js';
-import { configure as sbConfigure } from './store/supabase.js';
+import { configure as sbConfigure, autoPull } from './store/supabase.js';
 import { logError } from './core/diagnostics.js';
 import { APP } from './config/app.js';
 
@@ -53,6 +53,8 @@ async function initTheme() {
   document.documentElement.setAttribute('data-theme', theme || 'dark');
   document.title = `${APP.name} - ${APP.subtitle}`;
   await sbConfigure();
+  // auto-pull cloud data if signed in (best-effort, offline-first)
+  autoPull().catch(() => {});
 }
 
 function topbar(title, sub) {
