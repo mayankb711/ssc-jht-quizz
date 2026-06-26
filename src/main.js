@@ -88,6 +88,7 @@ async function render() {
     if (_cleanup) try { _cleanup(); } catch {}
 
     const wrap = document.createElement('div');
+    wrap.className = 'ui-page';
     app.innerHTML = '';
     app.appendChild(wrap);
 

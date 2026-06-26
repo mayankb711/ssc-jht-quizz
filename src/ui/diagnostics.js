@@ -25,7 +25,7 @@ export async function mount(wrap, params, { topbar, go }) {
         <h2 class="ui-section-head__title">Error report panel</h2>
       </div>
       <div class="ui-card__body">
-        <p class="ui-muted" style="font-size: 0.85rem;">This stores the exact runtime failure, where it happened, and how the app recovered.</p>
+        <p class="ui-muted ui-text-sm">This stores the exact runtime failure, where it happened, and how the app recovered.</p>
         <div class="ui-btn-row">
           <button class="ui-btn ui-btn--secondary" id="clear">Clear reports</button>
           <button class="ui-btn ui-btn--secondary" id="home">Home</button>
@@ -43,23 +43,23 @@ export async function mount(wrap, params, { topbar, go }) {
 
   const root = document.getElementById('reports');
   root.innerHTML = reports.map(report => `
-    <div class="ui-card" style="margin-bottom: 12px;">
+    <div class="ui-card ui-mb-sm">
       <div class="ui-card__body">
-        <div class="ui-btn-row" style="margin-bottom: 10px;">
+        <div class="ui-btn-row ui-mb-sm">
           <span class="ui-badge ui-badge--neutral">${new Date(report.ts).toLocaleTimeString()}</span>
           <span class="ui-badge ui-badge--neutral">${esc(report.screen)}</span>
           <span class="ui-badge ${report.resolved ? 'ui-badge--good' : 'ui-badge--warn'}">${report.resolved ? 'Resolved' : 'Open'}</span>
         </div>
-        <h3 style="margin-top: 0;">${esc(report.title)}</h3>
-        <p class="ui-muted" style="white-space: pre-wrap;">${esc(report.message || '(no message)')}</p>
-        ${report.stack ? `<details class="ui-followup"><summary>Stack trace</summary><pre class="error-stack" style="margin-top: 8px;">${esc(report.stack)}</pre></details>` : ''}
-        <div style="margin-top: 12px;">
+        <h3>${esc(report.title)}</h3>
+        <p class="ui-muted ui-text-pre">${esc(report.message || '(no message)')}</p>
+        ${report.stack ? `<details class="ui-followup"><summary>Stack trace</summary><pre class="error-stack ui-mt-sm">${esc(report.stack)}</pre></details>` : ''}
+        <div class="ui-mt-md">
           <strong>Recovery steps</strong>
-          <ol style="margin: 8px 0 0 18px; padding: 0;">
+          <ol class="ui-list--bullets">
             ${(report.recoverySteps || []).map(step => `<li>${esc(step)}</li>`).join('') || '<li class="ui-muted">None recorded</li>'}
           </ol>
         </div>
-        <div class="ui-btn-row" style="margin-top: 12px;">
+        <div class="ui-btn-row ui-mt-md">
           <button class="ui-btn ui-btn--secondary" data-resolve="${report.id}">${report.resolved ? 'Mark unresolved' : 'Mark resolved'}</button>
           <button class="ui-btn ui-btn--secondary" data-step="${report.id}">Add recovery step</button>
         </div>

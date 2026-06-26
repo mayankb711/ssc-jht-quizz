@@ -57,7 +57,7 @@ export async function mount(wrap, params, { topbar, go }) {
           <h2 class="ui-section-head__title">AI Explanations</h2>
         </div>
         <div class="ui-card__body">
-          <p class="ui-muted" style="font-size: 0.85rem;">Paste your Cloudflare credentials to enable AI explanations. They're cached forever, so each concept costs only once.</p>
+          <p class="ui-muted ui-text-sm">Paste your Cloudflare credentials to enable AI explanations. They're cached forever, so each concept costs only once.</p>
           <div class="ui-field">
             <label class="ui-field__label">Cloudflare Account ID</label>
             <input id="cf_account" class="ui-input" value="${esc(cfAccount)}" placeholder="e.g. abcd1234">
@@ -79,7 +79,7 @@ export async function mount(wrap, params, { topbar, go }) {
             <input id="neuron_cap" class="ui-input" type="number" min="500" max="10000" value="${cap}">
           </div>
           <div class="ui-meter"><div class="ui-meter__fill" style="width: ${Math.min(100,(u.used/u.cap)*100)}%;"></div></div>
-          <p class="ui-muted" style="font-size: 0.8rem;">Used ${u.used} / ${u.cap} neurons today.</p>
+          <p class="ui-muted ui-text-xs">Used ${u.used} / ${u.cap} neurons today.</p>
           <button class="ui-btn" id="save-ai">Save AI settings</button>
         </div>
       </div>
@@ -89,7 +89,7 @@ export async function mount(wrap, params, { topbar, go }) {
           <h2 class="ui-section-head__title">Cloud Sync</h2>
         </div>
         <div class="ui-card__body">
-          <p class="ui-muted" style="font-size: 0.85rem;">Syncs your progress across devices. Create a free project at <b>supabase.com</b>, run the schema from <b>supabase/schema.sql</b>, then paste credentials below.</p>
+          <p class="ui-muted ui-text-sm">Syncs your progress across devices. Create a free project at <b>supabase.com</b>, run the schema from <b>supabase/schema.sql</b>, then paste credentials below.</p>
           <div class="ui-field">
             <label class="ui-field__label">Project URL</label>
             <input id="sb_url" class="ui-input" value="${esc(sbUrl)}" placeholder="https://xxxx.supabase.co">
@@ -99,7 +99,7 @@ export async function mount(wrap, params, { topbar, go }) {
             <input id="sb_key" class="ui-input" value="${esc(sbKey)}" placeholder="eyJhbGciOi...">
           </div>
           <button class="ui-btn" id="save-sb">Save and connect</button>
-          <div id="sb-status" style="margin-top: 14px;"></div>
+          <div id="sb-status" class="ui-mt-md"></div>
         </div>
       </div>
 
@@ -108,15 +108,15 @@ export async function mount(wrap, params, { topbar, go }) {
           <h2 class="ui-section-head__title">Backup</h2>
         </div>
         <div class="ui-card__body">
-          <p class="ui-muted" style="font-size: 0.85rem;">Export your progress to a file and restore it later on any device.</p>
+          <p class="ui-muted ui-text-sm">Export your progress to a file and restore it later on any device.</p>
           <div class="ui-btn-row">
             <button class="ui-btn ui-btn--secondary" id="backup">Export backup (.json)</button>
-            <label class="ui-btn ui-btn--secondary" style="display: inline-flex; align-items: center; cursor: pointer;">
+            <label class="ui-btn ui-btn--secondary" style="cursor: pointer;">
               Import backup
-              <input id="backup-file" type="file" accept="application/json" style="display: none;">
+              <input id="backup-file" type="file" accept="application/json" hidden>
             </label>
           </div>
-          <p class="ui-muted" style="font-size: 0.75rem; margin-top: 8px;">Imports attempts, generated questions, diagnostics history, and settings.</p>
+          <p class="ui-muted ui-mt-sm" style="font-size: 0.75rem;">Imports attempts, generated questions, diagnostics history, and settings.</p>
         </div>
       </div>`;
 
@@ -156,16 +156,16 @@ export async function mount(wrap, params, { topbar, go }) {
     }
 
     const authHtml = sbStatus.signedIn ? `
-      <div class="ui-card__body" style="padding: 12px 0;">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+      <div class="ui-card__body ui-sync-status">
+        <div class="ui-sync-row">
           <span class="ui-badge ui-badge--good">Signed in</span>
-          <span class="ui-muted" style="font-size: 0.85rem;">${esc(sbStatus.user?.email || 'Connected')}</span>
+          <span class="ui-sync-email ui-muted">${esc(sbStatus.user?.email || 'Connected')}</span>
         </div>
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+        <div class="ui-sync-row${sbStatus.syncInProgress ? '' : ' ui-sync-row--last'}">
           <span class="ui-badge ui-badge--neutral">Last sync: ${sbStatus.lastSyncAt || 'never'}</span>
           ${sbStatus.syncInProgress ? '<span class="ui-spinner ui-spinner--small" style="margin: 0;"></span>' : ''}
         </div>
-        <div class="ui-btn-row">
+        <div class="ui-btn-row${sbStatus.syncInProgress ? '' : ' ui-mt-sm'}">
           <button class="ui-btn" id="sb-push" ${sbStatus.syncInProgress ? 'disabled' : ''}>
             ${sbStatus.syncInProgress ? 'Syncing…' : 'Sync now ↑'}
           </button>
@@ -173,9 +173,9 @@ export async function mount(wrap, params, { topbar, go }) {
           <button class="ui-btn ui-btn--ghost" id="sb-signout">Sign out</button>
         </div>
       </div>` : `
-      <div class="ui-card__body" style="padding: 12px 0;">
-        <p class="ui-muted" style="font-size: 0.85rem; margin-bottom: 10px;">Connected. Sign in with your email to sync.</p>
-        <div class="ui-field" style="margin-top: 6px;">
+      <div class="ui-card__body ui-sync-status">
+        <p class="ui-text-sm ui-muted ui-mb-sm">Connected. Sign in with your email to sync.</p>
+        <div class="ui-field">
           <label class="ui-field__label">Email</label>
           <input id="sb-email" class="ui-input" placeholder="you@email.com">
         </div>

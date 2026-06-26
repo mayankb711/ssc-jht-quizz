@@ -36,13 +36,13 @@ export async function mount(wrap, params, { topbar, go }) {
         <h2 class="ui-section-head__title">${isMock ? 'Mock Test Result' : 'Session Result'}</h2>
       </div>
       <div class="ui-card__body">
-        <div class="ui-stat-row" style="margin-bottom: 16px;">
+        <div class="ui-stat-row ui-mb-md">
           <div class="ui-stat">
-            <div class="ui-stat__value" style="color: var(--good)">${scored.correct}</div>
+            <div class="ui-stat__value ui-text-good">${scored.correct}</div>
             <div class="ui-stat__label">Correct</div>
           </div>
           <div class="ui-stat">
-            <div class="ui-stat__value" style="color: var(--danger)">${scored.wrong}</div>
+            <div class="ui-stat__value ui-text-danger">${scored.wrong}</div>
             <div class="ui-stat__label">Wrong</div>
           </div>
           <div class="ui-stat">
@@ -55,7 +55,7 @@ export async function mount(wrap, params, { topbar, go }) {
           </div>
         </div>
         ${isMock ? '<p class="ui-muted ui-center">Real cutoff ~ 45-55%. Aim higher in weak topics (see Progress).</p>' : ''}
-        <div class="ui-btn-row" style="margin-top: 12px;">
+        <div class="ui-btn-row ui-mt-md">
           <button class="ui-btn" onclick="location.hash='screen=quiz&mode=quick'">Another quiz</button>
           <button class="ui-btn ui-btn--secondary" onclick="location.hash='screen=home'">Home</button>
         </div>
@@ -80,7 +80,7 @@ export async function mount(wrap, params, { topbar, go }) {
         ${correct ? '<span class="ui-badge ui-badge--good">✓ Correct</span>' : chosen == null ? '<span class="ui-badge ui-badge--neutral">Skipped</span>' : '<span class="ui-badge ui-badge--danger">✗ Wrong</span>'}
       </div>
       <div class="review-stem${q.lang === 'hi' ? ' hi' : ''}">${i + 1}. ${esc(q.stem)}</div>
-      ${q.passage ? `<details class="ui-followup"><summary>Show passage</summary><div class="ui-passage" style="margin-top: 8px;">${esc(q.passage)}</div></details>` : ''}
+      ${q.passage ? `<details class="ui-followup"><summary>Show passage</summary><div class="ui-passage ui-mt-sm">${esc(q.passage)}</div></details>` : ''}
       <div class="review-options">
         ${q.options.map((o, idx) => {
           const optClasses = ['ui-opt', 'ui-opt--disabled'];
@@ -89,7 +89,7 @@ export async function mount(wrap, params, { topbar, go }) {
           return `<div class="${optClasses.join(' ')}"><span class="ui-opt__letter">${String.fromCharCode(65 + idx)}</span><span class="ui-opt__text">${esc(o)}</span></div>`;
         }).join('')}
       </div>
-      <div class="expl-fb" data-i="${i}" style="margin-top: 12px;"><span class="ui-muted">Loading explanation…</span></div>`;
+      <div class="expl-fb ui-mt-md" data-i="${i}"><span class="ui-muted">Loading explanation…</span></div>`;
     list.appendChild(div);
 
     explain(q, chosen).then(({ text, source }) => {

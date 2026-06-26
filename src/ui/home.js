@@ -21,7 +21,7 @@ export async function mount(wrap, params, { topbar, go }) {
         <h2 class="ui-section-head__title">Welcome back</h2>
       </div>
       <div class="ui-card__body">
-        <div class="ui-stat-row" style="margin-bottom: 20px;">
+        <div class="ui-stat-row ui-mb-lg">
           <div class="ui-stat">
             <div class="ui-stat__value">${s.total}</div>
             <div class="ui-stat__label">Answered</div>
@@ -48,7 +48,7 @@ export async function mount(wrap, params, { topbar, go }) {
           </div>
           <div>
             <p class="ui-muted">Weakest topics appear at top in Progress. The adaptive engine drills those first.</p>
-            <div class="ui-btn-row" style="margin-top: 12px;">
+            <div class="ui-btn-row ui-mt-md">
               <span class="ui-badge ui-badge--good">Offline-first</span>
               <span class="ui-badge ui-badge--neutral">Adaptive</span>
               <span class="ui-badge ui-badge--neutral">Paper 1</span>

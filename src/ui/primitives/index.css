@@ -1073,3 +1073,65 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* === Spacing utilities === */
+.ui-mb-sm { margin-bottom: 8px; }
+.ui-mb-md { margin-bottom: 14px; }
+.ui-mb-lg { margin-bottom: 20px; }
+.ui-mt-sm { margin-top: 8px; }
+.ui-mt-md { margin-top: 12px; }
+.ui-mt-lg { margin-top: 16px; }
+.ui-ml-indent { margin: 8px 0 0 18px; padding: 0; }
+
+/* === Text size / color utilities === */
+.ui-text-sm { font-size: 0.85rem; }
+.ui-text-xs { font-size: 0.8rem; }
+.ui-text-good { color: var(--good); }
+.ui-text-danger { color: var(--danger); }
+.ui-text-warn { color: var(--warn); }
+.ui-text-pre { white-space: pre-wrap; }
+
+/* === Page transition === */
+.ui-page {
+  animation: pageEnter 0.35s var(--ease);
+}
+
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* === Cloud Sync section === */
+.ui-sync-status {
+  padding: var(--pad-sm, 12px) 0;
+}
+.ui-sync-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.ui-sync-row--last {
+  margin-bottom: 0;
+}
+.ui-sync-email {
+  font-size: 0.85rem;
+}
+
+/* === List with bullets === */
+.ui-list--bullets {
+  list-style: decimal;
+  margin: 8px 0 0 18px;
+  padding: 0;
+}
+.ui-list--bullets li {
+  margin-bottom: 4px;
+}
+
+/* === Inline helper for quiz follow-up === */
+.ui-followup-body {
+  margin-top: 8px;
+}
+.ui-followup-body .ui-btn {
+  margin-top: 6px;
+}

@@ -193,7 +193,7 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
         ${q.options.map((o, idx) => optHtml(o, idx, q, state.answers[state.index], immediate && state.revealed)).join('')}
       </div>
       <div id="feedback"></div>
-      <div class="ui-btn-row" style="margin-top: 16px;">
+      <div class="ui-btn-row ui-mt-lg">
         ${state.index > 0 ? '<button class="ui-btn ui-btn--secondary" id="prev">← Prev</button>' : ''}
         ${immediate && state.answers[state.index]==null ? '<button class="ui-btn ui-btn--secondary" id="skip">Skip</button>' : ''}
         ${immediate && !state.revealed && state.answers[state.index]!=null ? '<button class="ui-btn" id="check">Check answer</button>' : ''}
@@ -230,8 +230,8 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
           const tag = source === 'cache' ? '✓ cached' : source === 'ai' ? '✨ AI' : '📖';
           fb.innerHTML = `<div class="ui-feedback"><span class="ui-feedback__tag">Explanation ${tag}:</span><br>${esc(text)}</div>
             <details class="ui-followup"><summary>Still confused? Ask a follow-up (uses neurons)</summary>
-            <div style="margin-top: 8px;"><textarea id="doubt" rows="2" class="ui-textarea" placeholder="What part is unclear?"></textarea>
-            <button class="ui-btn ui-btn--secondary" id="askfu" style="margin-top: 6px;">Ask</button></div></details>`;
+            <div class="ui-followup-body"><textarea id="doubt" rows="2" class="ui-textarea" placeholder="What part is unclear?"></textarea>
+            <button class="ui-btn ui-btn--secondary" id="askfu">Ask</button></div></details>`;
           const ask = document.getElementById('askfu');
           if (ask) ask.addEventListener('click', async () => {
             const d = document.getElementById('doubt').value.trim();
