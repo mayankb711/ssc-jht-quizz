@@ -1,6 +1,6 @@
-/* ============================================================
-   main.js - entry + hash router.
-   ============================================================ */
+/*
+  main.js — entry + hash router.
+*/
 
 import { kvGet } from './store/local.js';
 import { configure as sbConfigure } from './store/supabase.js';
@@ -33,14 +33,14 @@ function showFatal(err, title = 'App error') {
     recoverySteps: ['Captured at app-level error boundary', 'Retry the current screen', 'Go home to recover to the dashboard'],
   }).catch(() => {});
   app.innerHTML = `
-    <div style="padding:24px;">
-      <div class="card">
+    <div class="error-container">
+      <div class="ui-card error-card">
         <h2>${title}</h2>
-        <p class="muted">The app hit a runtime problem while loading.</p>
-        <pre style="white-space:pre-wrap;overflow:auto;background:var(--surface-2);padding:12px;border-radius:10px;border:1px solid var(--border);">${String(err?.stack || err?.message || err)}</pre>
-        <div class="btn-row" style="margin-top:12px;">
-          <button class="btn" id="retry">Retry</button>
-          <button class="btn secondary" id="home">Go home</button>
+        <p class="ui-muted">The app hit a runtime problem while loading.</p>
+        <pre class="error-stack">${String(err?.stack || err?.message || err)}</pre>
+        <div class="ui-btn-row" style="margin-top: 12px;">
+          <button class="ui-btn" id="retry">Retry</button>
+          <button class="ui-btn ui-btn--secondary" id="home">Go home</button>
         </div>
       </div>
     </div>`;
@@ -57,12 +57,12 @@ async function initTheme() {
 
 function topbar(title, sub) {
   return `
-    <div class="topbar">
-      <div class="brand">${title}${sub ? `<span class="sub">${sub}</span>` : ''}</div>
-      <div style="display:flex; gap:8px;">
-        <button class="icon-btn" data-go="diagnostics" title="Diagnostics">!</button>
-        <button class="icon-btn" data-go="progress" title="Progress">%</button>
-        <button class="icon-btn" data-go="settings" title="Settings">=</button>
+    <div class="ui-topbar">
+      <div class="ui-brand">${title}${sub ? `<span class="sub">${sub}</span>` : ''}</div>
+      <div class="ui-topbar__nav">
+        <button class="ui-nav-btn" data-go="diagnostics" title="Diagnostics"><span class="ui-nav-btn__icon">🔍</span> Diag</button>
+        <button class="ui-nav-btn" data-go="progress" title="Progress"><span class="ui-nav-btn__icon">📊</span> Progress</button>
+        <button class="ui-nav-btn" data-go="settings" title="Settings"><span class="ui-nav-btn__icon">⚙️</span> Settings</button>
       </div>
     </div>`;
 }

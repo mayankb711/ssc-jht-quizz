@@ -1,6 +1,5 @@
 /* Settings screen
-   Refactored to use new UI primitives
- */
+   Uses CSS classes from primitives for all styling. */
 
 import { kvGet, kvSet } from '../store/local.js';
 import { configure as sbConfigure, isConfigured as sbReady, signInMagic, getSession, push as sbPush, pull as sbPull } from '../store/supabase.js';
@@ -24,7 +23,7 @@ export async function mount(wrap, params, { topbar, go }) {
   const u         = await getUsage();
 
   body.innerHTML = `
-    <div class="ui-card" style="margin-bottom: 20px;">
+    <div class="ui-card settings-card">
       <div class="ui-card__header">
         <h2 class="ui-section-head__title">Appearance</h2>
       </div>
@@ -42,7 +41,7 @@ export async function mount(wrap, params, { topbar, go }) {
       </div>
     </div>
 
-    <div class="ui-card" style="margin-bottom: 20px;">
+    <div class="ui-card settings-card">
       <div class="ui-card__header">
         <h2 class="ui-section-head__title">AI Explanations</h2>
       </div>
@@ -74,7 +73,7 @@ export async function mount(wrap, params, { topbar, go }) {
       </div>
     </div>
 
-    <div class="ui-card" style="margin-bottom: 20px;">
+    <div class="ui-card settings-card">
       <div class="ui-card__header">
         <h2 class="ui-section-head__title">Cloud Sync</h2>
       </div>
@@ -114,8 +113,7 @@ export async function mount(wrap, params, { topbar, go }) {
         </div>
         <p class="ui-muted" style="font-size: 0.75rem; margin-top: 8px;">Imports attempts, generated questions, diagnostics history, and settings.</p>
       </div>
-    </div>
-  `;
+    </div>`;
 
   document.getElementById('theme').addEventListener('change', async (e) => {
     await kvSet('theme', e.target.value);
@@ -166,7 +164,7 @@ export async function mount(wrap, params, { topbar, go }) {
   function flash(msg) {
     const old = document.getElementById('flash');
     if (old) old.remove();
-    body.insertAdjacentHTML('afterbegin', `<div class="ui-card" id="flash" style="border-color: var(--accent); padding: 12px 16px; margin-bottom: 16px;">${esc(msg)}</div>`);
+    body.insertAdjacentHTML('afterbegin', `<div class="ui-toast" id="flash">${esc(msg)}</div>`);
     setTimeout(() => document.getElementById('flash')?.remove(), 3500);
   }
 }

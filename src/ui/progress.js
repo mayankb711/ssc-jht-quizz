@@ -1,9 +1,8 @@
-/* ============================================================
-   progress.js — mastery breakdown by topic & skill, history.
-   Surfaces the same data the adaptive engine uses, so the learner
-   sees exactly what's being drilled and why.
-   Refactored to use new UI primitives
-   ============================================================ */
+/*
+  progress.js — mastery breakdown by topic & skill, history.
+  Surfaces the same data the adaptive engine uses.
+  Uses CSS classes from primitives for all styling.
+*/
 
 import { summary } from '../core/progress.js';
 import { computeMastery } from '../core/engine.js';
@@ -23,20 +22,19 @@ export async function mount(wrap, params, { topbar, go }) {
         <div class="ui-empty__action">
           <button class="ui-btn" onclick="location.hash='screen=quiz&mode=quick'">Start a quick quiz</button>
         </div>
-      </div>
-    `;
+      </div>`;
     return;
   }
 
-  // Topic bars
   const topicRows = s.topics.map(t => {
     const info = topicById(t.topic) || { label: t.topic };
     const pct = Math.round(t.accuracy * 100);
     const barColor = pct >= 75 ? 'var(--good)' : pct >= 50 ? 'var(--warn)' : 'var(--danger)';
     return `
-      <div style="margin-bottom: 14px;">
-        <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
-          <span>${esc(info.label)}</span><span class="ui-muted">${t.correct}/${t.total} · ${pct}%</span>
+      <div class="ui-topic-row">
+        <div class="ui-topic-row__header">
+          <span class="ui-topic-row__label">${esc(info.label)}</span>
+          <span class="ui-topic-row__stats">${t.correct}/${t.total} · ${pct}%</span>
         </div>
         <div class="ui-meter"><div class="ui-meter__fill" style="width: ${pct}%; background: ${barColor};"></div></div>
       </div>`;
@@ -57,7 +55,7 @@ export async function mount(wrap, params, { topbar, go }) {
   }).join('');
 
   body.innerHTML = `
-    <div class="ui-card" style="margin-bottom: 20px;">
+    <div class="ui-card ui-gap-bottom">
       <div class="ui-card__header">
         <h2 class="ui-section-head__title">Overall</h2>
       </div>
@@ -77,8 +75,8 @@ export async function mount(wrap, params, { topbar, go }) {
             <div class="ui-stat__label">Day streak</div>
           </div>
         </div>
-        <div style="display: flex; gap: 16px; align-items: center;">
-          <div class="ui-ring" style="--p: ${Math.round(s.accuracy*100)};">
+        <div class="ui-ring-row">
+          <div class="ui-ring ui-ring--glow" style="--p: ${Math.round(s.accuracy*100)};">
             <div class="ui-ring__inner">${Math.round(s.accuracy*100)}%</div>
           </div>
           <p class="ui-muted">This view mirrors the exact weights used by the adaptive picker, so weaknesses stay actionable.</p>
@@ -86,17 +84,17 @@ export async function mount(wrap, params, { topbar, go }) {
       </div>
     </div>
 
-    <div class="ui-card" style="margin-bottom: 20px;">
+    <div class="ui-card ui-gap-bottom">
       <div class="ui-card__header">
         <h2 class="ui-section-head__title">Mastery by topic</h2>
       </div>
       <div class="ui-card__body">
-        <p class="ui-muted" style="font-size: 0.8rem; margin-bottom: 16px;">Sorted weakest-first - the engine drills these hardest.</p>
+        <p class="ui-muted" style="font-size: 0.8rem; margin-bottom: 16px;">Sorted weakest-first — the engine drills these hardest.</p>
         ${topicRows}
       </div>
     </div>
 
-    <div class="ui-card" style="margin-bottom: 20px;">
+    <div class="ui-card ui-gap-bottom">
       <div class="ui-card__header">
         <h2 class="ui-section-head__title">Weakest topic skills</h2>
       </div>
@@ -114,8 +112,7 @@ export async function mount(wrap, params, { topbar, go }) {
         <p class="ui-muted" style="font-size: 0.8rem; margin-bottom: 16px;">These are the exact weights the adaptive picker uses.</p>
         ${skillRows ? `<div class="ui-list">${skillRows}</div>` : '<p class="ui-muted">More data needed.</p>'}
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }

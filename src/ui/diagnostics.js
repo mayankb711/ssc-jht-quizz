@@ -15,13 +15,12 @@ export async function mount(wrap, params, { topbar, go }) {
             <button class="ui-btn ui-btn--secondary" onclick="location.hash='screen=home'">Home</button>
           </div>
         </div>
-      </div>
-    `;
+      </div>`;
     return;
   }
 
   body.innerHTML = `
-    <div class="ui-card" style="margin-bottom: 20px;">
+    <div class="ui-card ui-gap-bottom">
       <div class="ui-card__header">
         <h2 class="ui-section-head__title">Error report panel</h2>
       </div>
@@ -33,8 +32,7 @@ export async function mount(wrap, params, { topbar, go }) {
         </div>
       </div>
     </div>
-    <div id="reports" style="margin-top: 14px;"></div>
-  `;
+    <div id="reports" class="ui-gap-top"></div>`;
 
   document.getElementById('clear').addEventListener('click', async () => {
     if (!confirm('Clear all error reports?')) return;
@@ -54,8 +52,8 @@ export async function mount(wrap, params, { topbar, go }) {
         </div>
         <h3 style="margin-top: 0;">${esc(report.title)}</h3>
         <p class="ui-muted" style="white-space: pre-wrap;">${esc(report.message || '(no message)')}</p>
-        ${report.stack ? `<details><summary class="ui-muted" style="cursor: pointer;">Stack trace</summary><pre style="white-space: pre-wrap; overflow: auto; background: var(--surface-2); padding: 12px; border-radius: 10px; border: 1px solid var(--border);">${esc(report.stack)}</pre></details>` : ''}
-        <div style="margin-top: 10px;">
+        ${report.stack ? `<details class="ui-followup"><summary>Stack trace</summary><pre class="error-stack" style="margin-top: 8px;">${esc(report.stack)}</pre></details>` : ''}
+        <div style="margin-top: 12px;">
           <strong>Recovery steps</strong>
           <ol style="margin: 8px 0 0 18px; padding: 0;">
             ${(report.recoverySteps || []).map(step => `<li>${esc(step)}</li>`).join('') || '<li class="ui-muted">None recorded</li>'}

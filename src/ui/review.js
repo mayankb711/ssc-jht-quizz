@@ -1,9 +1,9 @@
-/* ============================================================
-   review.js — post-session review. Shows score breakdown (with
-   negative marking for mock), then every question with the user's
-   answer vs correct, plus the explanation.
-   Refactored to use new UI primitives
-   ============================================================ */
+/*
+  review.js — post-session review.
+  Shows score breakdown with negative marking for mock,
+  then every question with the user's answer vs correct.
+  Uses CSS classes from primitives for all styling.
+*/
 
 import { scoreSession, NEGATIVE } from '../core/progress.js';
 import { explain } from '../ai/client.js';
@@ -22,8 +22,7 @@ export async function mount(wrap, params, { topbar, go }) {
         <div class="ui-empty__action">
           <button class="ui-btn" onclick="location.hash='screen=home'">Home</button>
         </div>
-      </div>
-    `;
+      </div>`;
     return;
   }
   const { questions, answers, result } = JSON.parse(raw);
@@ -32,7 +31,7 @@ export async function mount(wrap, params, { topbar, go }) {
   );
 
   body.innerHTML = `
-    <div class="ui-card" style="margin-bottom: 20px;">
+    <div class="ui-card ui-gap-bottom">
       <div class="ui-card__header">
         <h2 class="ui-section-head__title">${isMock ? 'Mock Test Result' : 'Session Result'}</h2>
       </div>
@@ -55,7 +54,7 @@ export async function mount(wrap, params, { topbar, go }) {
             <div class="ui-stat__label">Marks</div>
           </div>
         </div>
-        ${isMock ? `<p class="ui-muted ui-center">Real cutoff ~ 45-55%. Aim higher in weak topics (see Progress).</p>` : ''}
+        ${isMock ? '<p class="ui-muted ui-center">Real cutoff ~ 45-55%. Aim higher in weak topics (see Progress).</p>' : ''}
         <div class="ui-btn-row" style="margin-top: 12px;">
           <button class="ui-btn" onclick="location.hash='screen=quiz&mode=quick'">Another quiz</button>
           <button class="ui-btn ui-btn--secondary" onclick="location.hash='screen=home'">Home</button>
@@ -67,41 +66,36 @@ export async function mount(wrap, params, { topbar, go }) {
       <h2 class="ui-section-head__title">Question by question</h2>
       <span class="ui-muted">Review every choice and explanation</span>
     </div>
-    <div id="qlist"></div>
-  `;
+    <div id="qlist"></div>`;
 
   const list = document.getElementById('qlist');
   questions.forEach((q, i) => {
     const chosen = answers[i];
     const correct = chosen === q.answer;
     const div = document.createElement('div');
-    div.style.cssText = 'margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--border);';
+    div.className = 'ui-review-item';
     div.innerHTML = `
-      <div style="margin-bottom: 8px;">
-        <span class="ui-badge ui-badge--neutral">${q.topic.replace(/_/g, ' ')}</span>
-        ${correct ? '<span class="ui-badge ui-badge--good">✓</span>' : chosen == null ? '<span class="ui-badge ui-badge--neutral">skipped</span>' : '<span class="ui-badge ui-badge--danger">✗</span>'}
+      <div class="review-badge-row">
+        <span class="ui-tag">${q.topic.replace(/_/g, ' ')}</span>
+        ${correct ? '<span class="ui-badge ui-badge--good">✓ Correct</span>' : chosen == null ? '<span class="ui-badge ui-badge--neutral">Skipped</span>' : '<span class="ui-badge ui-badge--danger">✗ Wrong</span>'}
       </div>
-      <div style="font-size: 1rem; margin: 6px 0; ${q.lang === 'hi' ? 'font-family: var(--font-hi);' : ''}">${i + 1}. ${esc(q.stem)}</div>
-      ${q.passage ? `<details><summary class="ui-muted" style="cursor: pointer; font-size: 0.85rem;">Show passage</summary><div style="background: var(--surface-2); border-left: 3px solid var(--accent-2); padding: 12px 14px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; max-height: 260px; overflow: auto; margin-top: 8px; font-size: 0.95rem;" class="hi">${esc(q.passage)}</div></details>` : ''}
-      <div style="display: flex; flex-direction: column; gap: 6px;">
+      <div class="review-stem${q.lang === 'hi' ? ' hi' : ''}">${i + 1}. ${esc(q.stem)}</div>
+      ${q.passage ? `<details class="ui-followup"><summary>Show passage</summary><div class="ui-passage" style="margin-top: 8px;">${esc(q.passage)}</div></details>` : ''}
+      <div class="review-options">
         ${q.options.map((o, idx) => {
-          let style = '';
-          if (idx === q.answer) {
-            style = 'border-color: var(--good); background: color-mix(in srgb, var(--good) 14%, var(--surface-2));';
-          } else if (idx === chosen) {
-            style = 'border-color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, var(--surface-2));';
-          }
-          return `<div style="display: flex; gap: 12px; align-items: flex-start; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 13px 14px; cursor: default; pointer-events: none; ${style}"><span style="flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem;">${String.fromCharCode(65 + idx)}</span><span>${esc(o)}</span></div>`;
+          const optClasses = ['ui-opt', 'ui-opt--disabled'];
+          if (idx === q.answer) optClasses.push('ui-opt--correct');
+          else if (idx === chosen) optClasses.push('ui-opt--wrong');
+          return `<div class="${optClasses.join(' ')}"><span class="ui-opt__letter">${String.fromCharCode(65 + idx)}</span><span class="ui-opt__text">${esc(o)}</span></div>`;
         }).join('')}
       </div>
-      <div class="expl-fb" data-i="${i}" style="margin-top: 10px;"><span class="ui-muted">Loading explanation…</span></div>`;
+      <div class="expl-fb" data-i="${i}" style="margin-top: 12px;"><span class="ui-muted">Loading explanation…</span></div>`;
     list.appendChild(div);
 
-    // lazy-load explanation
     explain(q, chosen).then(({ text, source }) => {
       const tag = source === 'cache' ? '✓ cached' : source === 'ai' ? '✨ AI' : '📖';
       body.querySelector(`.expl-fb[data-i="${i}"]`).innerHTML =
-        `<div style="background: var(--surface-2); border-left: 3px solid var(--accent-2); padding: 10px 12px; border-radius: 6px; margin-top: 10px; font-size: 0.92rem;"><b>${tag}</b> ${esc(text)}</div>`;
+        `<div class="ui-feedback"><span class="ui-feedback__tag">${tag}</span> ${esc(text)}</div>`;
     });
   });
 }

@@ -1,13 +1,8 @@
-/* ============================================================
-   quiz.js — the question-taking screen. Handles all modes:
-     mock   : 200 Q, 2 hr timer, negative marking, no feedback
-              until the end.
-     quick  : 20 Q, adaptive, immediate feedback + explanation.
-     topic  : subject/topic picker → drill.
-     mistakes : re-attempt previously-wrong questions.
-   State is held in a closure; on finish it navigates to review.
-   Refactored to use new UI primitives
-   ============================================================ */
+/*
+  quiz.js — the question-taking screen.
+  Handles all modes: mock, quick, topic, mistakes.
+  Uses CSS classes from primitives for all styling.
+*/
 
 import { pick } from '../core/engine.js';
 import { startMock, finishMock, MOCK } from '../core/mocktest.js';
@@ -21,40 +16,30 @@ import { emit } from '../shared/events.js';
 
 export async function mount(wrap, params, { topbar, go }) {
   const mode = params.get('mode') || 'quick';
-  wrap.innerHTML = `${topbar('Quiz', modeLabel(mode))}<div id="qbody"><div class="spinner"></div></div>`;
+  wrap.innerHTML = `${topbar('Quiz', modeLabel(mode))}<div id="qbody"><div class="ui-spinner"></div></div>`;
   const body = document.getElementById('qbody');
 
-  // ---- topic/mistakes need a setup step first ----
   if (mode === 'topic') return setupTopic(body, go);
   if (mode === 'mistakes') return startMistakes(body, go);
 
-  // ---- assemble the question list for the mode ----
   let questions = [];
   let timed = false;
   let deadline = 0;
   if (mode === 'mock') {
     const m = await startMock();
     questions = m.questions; timed = true; deadline = m.deadline;
-  } else { // quick
+  } else {
     if (QUESTIONS.length < 20) {
       const hiTopic = TOPICS.find(t => t.subject === 'hi');
       const enTopic = TOPICS.find(t => t.subject === 'en');
       await Promise.all([
         hiTopic ? generateQuestions({
-          subject: 'hi',
-          topic: hiTopic.id,
-          label: hiTopic.label,
-          labelHi: hiTopic.labelHi,
-          skill: hiTopic.skills?.[0] || 'general',
-          difficulty: 3,
+          subject: 'hi', topic: hiTopic.id, label: hiTopic.label,
+          labelHi: hiTopic.labelHi, skill: hiTopic.skills?.[0] || 'general', difficulty: 3,
         }, 4) : Promise.resolve(),
         enTopic ? generateQuestions({
-          subject: 'en',
-          topic: enTopic.id,
-          label: enTopic.label,
-          labelHi: enTopic.labelHi,
-          skill: enTopic.skills?.[0] || 'general',
-          difficulty: 3,
+          subject: 'en', topic: enTopic.id, label: enTopic.label,
+          labelHi: enTopic.labelHi, skill: enTopic.skills?.[0] || 'general', difficulty: 3,
         }, 4) : Promise.resolve(),
       ]);
     }
@@ -70,8 +55,7 @@ export async function mount(wrap, params, { topbar, go }) {
         <div class="ui-empty__action">
           <button class="ui-btn ui-btn--secondary" onclick="location.hash='screen=home'">Back home</button>
         </div>
-      </div>
-    `;
+      </div>`;
     return;
   }
   return runSession(body, { questions, mode, timed, deadline, go });
@@ -90,12 +74,12 @@ function setupTopic(body, go) {
       </div>
       <div class="ui-card__body">
         <p class="ui-muted">Pick a subject, then optionally a topic. The adaptive engine weights your weak areas heavier.</p>
-        
+
         <div class="ui-search-bar" style="margin: 16px 0;">
           <span class="ui-search-bar__icon">🔍</span>
           <input type="text" id="topic-search" class="ui-search-bar__input" placeholder="Search topics">
         </div>
-        
+
         <div class="ui-filter-bar" style="margin-bottom: 16px;">
           <select id="tsubj" class="ui-select">
             <option value="">Both subjects</option>
@@ -103,21 +87,20 @@ function setupTopic(body, go) {
             <option value="en">${SUBJECTS.en.label} — ${SUBJECTS.en.labelHi}</option>
           </select>
         </div>
-        
+
         <div class="ui-field">
           <label class="ui-field__label">Topic (optional)</label>
           <select id="ttopic" class="ui-select"><option value="">Any topic</option></select>
         </div>
-        
+
         <div class="ui-field">
           <label class="ui-field__label">Number of questions</label>
           <select id="tn" class="ui-select"><option>10</option><option selected>20</option><option>30</option></select>
         </div>
-        
+
         <button class="ui-btn" id="tstart">Start</button>
       </div>
-    </div>
-  `;
+    </div>`;
 
   const subjSel = document.getElementById('tsubj');
   const search = document.getElementById('topic-search');
@@ -142,12 +125,9 @@ function setupTopic(body, go) {
       const localCount = QUESTIONS.filter(q => q.topic === topic).length;
       if (localCount < n) {
         await generateQuestions({
-          subject: meta?.subject || subject || 'en',
-          topic,
-          label: meta?.label || topic,
-          labelHi: meta?.labelHi || meta?.label || topic,
-          skill: meta?.skills?.[0] || 'general',
-          difficulty: 3,
+          subject: meta?.subject || subject || 'en', topic,
+          label: meta?.label || topic, labelHi: meta?.labelHi || meta?.label || topic,
+          skill: meta?.skills?.[0] || 'general', difficulty: 3,
         }, n - localCount);
       }
     }
@@ -164,7 +144,6 @@ async function startMistakes(body, go) {
   const bank = [...QUESTIONS, ...generated];
   const wrongIds = [...new Set(attempts.filter(a => !a.correct).map(a => a.question_id))];
   let questions = wrongIds.map(id => bank.find(q => q.id === id)).filter(Boolean);
-  // dedupe & cap
   questions = questions.slice(0, 40);
   if (!questions.length) {
     body.innerHTML = `
@@ -174,8 +153,7 @@ async function startMistakes(body, go) {
         <div class="ui-empty__action">
           <button class="ui-btn ui-btn--secondary" onclick="location.hash='screen=home'">Back home</button>
         </div>
-      </div>
-    `;
+      </div>`;
     return;
   }
   return runSession(body, { questions, mode: 'mistakes', timed: false, deadline: 0, go });
@@ -196,22 +174,22 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
     if (state.timed) {
       const s = Math.max(0, Math.floor((state.deadline - now) / 1000));
       const lo = s < 300;
-      timeLeft = `<span class="timer ${lo?'low':''}" style="font-variant-numeric: tabular-nums; font-weight: 600; background: var(--surface-2); padding: 4px 10px; border-radius: 999px; font-size: 0.9rem; ${lo ? 'color: var(--danger);' : ''}">⏱ ${pad(Math.floor(s/3600))}:${pad(Math.floor(s/60)%60)}:${pad(s%60)}</span>`;
+      timeLeft = `<span class="ui-timer${lo ? ' ui-timer--low' : ''}">⏱ ${pad(Math.floor(s/3600))}:${pad(Math.floor(s/60)%60)}:${pad(s%60)}</span>`;
     }
     const pct = Math.round(((state.index) / state.questions.length) * 100);
 
     body.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--text-dim); margin-bottom: 12px;">
-        <button class="ui-btn ui-btn--ghost" id="quit" style="padding: 8px 12px;">✕ Exit</button>
-        <div style="flex: 1; height: 8px; background: var(--surface-2); border-radius: 999px; margin: 0 12px; overflow: hidden;">
-          <div style="display: block; height: 100%; background: linear-gradient(90deg, var(--accent-2), var(--accent)); width: ${pct}%; transition: width 0.25s ease;"></div>
+      <div class="ui-progress">
+        <button class="ui-btn ui-btn--ghost quiz-exit" id="quit">✕ Exit</button>
+        <div class="ui-progress__bar">
+          <span class="ui-progress__bar-fill" style="width: ${pct}%;"></span>
         </div>
-        <span class="ui-muted">${state.index+1}/${state.questions.length}</span>
+        <span class="ui-progress__count">${state.index+1}/${state.questions.length}</span>
         ${timeLeft}
       </div>
-      ${q.passage ? `<div style="background: var(--surface-2); border-left: 3px solid var(--accent-2); padding: 12px 14px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; max-height: 260px; overflow: auto; margin-bottom: 14px; font-size: 0.95rem;" class="hi">${esc(q.passage)}</div>` : ''}
-      <div style="font-size: 1.05rem; margin: 8px 0 16px; line-height: 1.55; ${q.lang==='hi'?'font-family: var(--font-hi);':''}">${state.index+1}. ${esc(q.stem)}</div>
-      <div style="display: flex; flex-direction: column; gap: 10px;" id="opts">
+      ${q.passage ? `<div class="ui-passage hi">${esc(q.passage)}</div>` : ''}
+      <div class="ui-stem${q.lang==='hi' ? ' hi' : ''}">${state.index+1}. ${esc(q.stem)}</div>
+      <div class="q-options" id="opts">
         ${q.options.map((o, idx) => optHtml(o, idx, q, state.answers[state.index], immediate && state.revealed)).join('')}
       </div>
       <div id="feedback"></div>
@@ -224,15 +202,14 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
             : '<button class="ui-btn" id="finish">Finish ✓</button>'}
       </div>`;
 
-    // option click
-    body.querySelectorAll('.opt').forEach(el => {
+    body.querySelectorAll('.ui-opt').forEach(el => {
       el.addEventListener('click', () => {
         if (busy || (immediate && state.revealed)) return;
         const idx = +el.dataset.idx;
         state = quizReducer(state, { type: 'select', answer: idx });
         if (!immediate) {
-          body.querySelectorAll('.opt').forEach(o => o.classList.remove('selected'));
-          el.classList.add('selected');
+          body.querySelectorAll('.ui-opt').forEach(o => o.classList.remove('ui-opt--selected'));
+          el.classList.add('ui-opt--selected');
         } else {
           render();
         }
@@ -246,14 +223,13 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
         const q = state.questions[state.index];
         await record({ question: q, chosen: state.answers[state.index], mode: state.mode });
         render();
-        // pull AI explanation (cache-first, cap-guarded)
         const fb = document.getElementById('feedback');
         if (fb) {
-          fb.innerHTML = `<div style="background: var(--surface-2); border-left: 3px solid var(--accent-2); padding: 10px 12px; border-radius: 6px; margin-top: 10px; font-size: 0.92rem;"><b>Explanation:</b> <span class="ui-muted">loading…</span></div>`;
+          fb.innerHTML = `<div class="ui-feedback"><span class="ui-feedback__tag">Explanation:</span> <span class="ui-muted">loading…</span></div>`;
           const { text, source } = await explain(q, state.answers[state.index]);
           const tag = source === 'cache' ? '✓ cached' : source === 'ai' ? '✨ AI' : '📖';
-          fb.innerHTML = `<div style="background: var(--surface-2); border-left: 3px solid var(--accent-2); padding: 10px 12px; border-radius: 6px; margin-top: 10px; font-size: 0.92rem;"><b>Explanation ${tag}:</b><br>${esc(text)}</div>
-            <details style="margin-top: 8px;"><summary class="ui-muted" style="cursor: pointer;">Still confused? Ask a follow-up (uses neurons)</summary>
+          fb.innerHTML = `<div class="ui-feedback"><span class="ui-feedback__tag">Explanation ${tag}:</span><br>${esc(text)}</div>
+            <details class="ui-followup"><summary>Still confused? Ask a follow-up (uses neurons)</summary>
             <div style="margin-top: 8px;"><textarea id="doubt" rows="2" class="ui-textarea" placeholder="What part is unclear?"></textarea>
             <button class="ui-btn ui-btn--secondary" id="askfu" style="margin-top: 6px;">Ask</button></div></details>`;
           const ask = document.getElementById('askfu');
@@ -262,7 +238,7 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
             if (!d) return;
             ask.textContent = '…';
             const { text } = await (await import('../ai/client.js')).followup(q, d);
-            document.getElementById('feedback').insertAdjacentHTML('beforeend', `<div style="background: var(--surface-2); border-left: 3px solid var(--accent-2); padding: 10px 12px; border-radius: 6px; margin-top: 8px; font-size: 0.92rem;"><b>You asked:</b> ${esc(d)}<br><b>Answer:</b> ${esc(text)}</div>`);
+            document.getElementById('feedback').insertAdjacentHTML('beforeend', `<div class="ui-feedback" style="margin-top: 8px;"><span class="ui-feedback__tag">You asked:</span> ${esc(d)}<br><b>Answer:</b> ${esc(text)}</div>`);
           });
         }
       } finally {
@@ -308,18 +284,14 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
 
 // ---------- helpers ----------
 function optHtml(text, idx, q, selected, revealed) {
-  let style = '';
-  if (selected === idx && !revealed) {
-    style = 'border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));';
-  }
+  const classes = ['ui-opt'];
+  if (selected === idx && !revealed) classes.push('ui-opt--selected');
   if (revealed) {
-    if (idx === q.answer) {
-      style = 'border-color: var(--good); background: color-mix(in srgb, var(--good) 14%, var(--surface-2));';
-    } else if (selected === idx) {
-      style = 'border-color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, var(--surface-2));';
-    }
+    if (idx === q.answer) classes.push('ui-opt--correct');
+    else if (selected === idx) classes.push('ui-opt--wrong');
   }
-  return `<div class="opt" data-idx="${idx}" style="display: flex; gap: 12px; align-items: flex-start; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 13px 14px; cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease; box-shadow: var(--shadow-soft); ${style}"><span style="flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; ${selected === idx && !revealed ? 'background: var(--accent); color: #07140e; border-color: transparent;' : ''}">${String.fromCharCode(65+idx)}</span><span>${esc(text)}</span></div>`;
+  if (revealed) classes.push('ui-opt--disabled');
+  return `<div class="${classes.join(' ')}" data-idx="${idx}"><span class="ui-opt__letter">${String.fromCharCode(65+idx)}</span><span class="ui-opt__text">${esc(text)}</span></div>`;
 }
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function pad(n) { return String(n).padStart(2, '0'); }
