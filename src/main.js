@@ -71,7 +71,18 @@ function topbar(title, sub) {
 
 async function render() {
   try {
-    const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+    const hash = location.hash.replace(/^#/, '');
+
+    // If the hash contains Supabase auth tokens, don't route — let Supabase
+    // recover the session, then clean the URL and go home.
+    if (hash.includes('access_token') || hash.includes('type=recovery')) {
+      await sbConfigure();
+      history.replaceState(null, '', window.location.pathname);
+      location.hash = 'screen=home';
+      return;
+    }
+
+    const params = new URLSearchParams(hash);
     const name = params.get('screen') || 'home';
     const Screen = SCREENS[name] || SCREENS.home;
     if (_cleanup) try { _cleanup(); } catch {}
@@ -102,4 +113,15 @@ async function render() {
 window.addEventListener('hashchange', render);
 window.addEventListener('error', (e) => showFatal(e.error || e.message, 'Unhandled error'));
 window.addEventListener('unhandledrejection', (e) => showFatal(e.reason, 'Unhandled rejection'));
-initTheme().then(render).catch((err) => showFatal(err, 'Startup error'));
+
+// If we're returning from a magic-link auth, handle it before normal init
+const initHash = location.hash;
+if (initHash.includes('access_token') || initHash.includes('type=recovery')) {
+  initTheme().then(() => {
+    history.replaceState(null, '', window.location.pathname);
+    location.hash = 'screen=home';
+    render();
+  }).catch((err) => showFatal(err, 'Startup error'));
+} else {
+  initTheme().then(render).catch((err) => showFatal(err, 'Startup error'));
+}

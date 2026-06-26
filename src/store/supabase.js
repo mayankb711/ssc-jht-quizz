@@ -46,7 +46,13 @@ export async function configure() {
   const key = await kvGet('sb_key');
   if (!url || !key) { _client = null; _session = null; notify(); return false; }
   try {
-    _client = createClient(url, key, { auth: { persistSession: true } });
+    _client = createClient(url, key, {
+      auth: {
+        persistSession: true,
+        flowType: 'pkce',
+        autoRefreshToken: true,
+      },
+    });
     const { data } = await _client.auth.getSession();
     _session = data.session || null;
 
@@ -75,7 +81,13 @@ export function isConfigured() {
 
 export async function signInMagic(email) {
   if (!_client) throw new Error('Supabase not configured');
-  const { error } = await _client.auth.signInWithOtp({ email });
+  // Use the current origin as redirect so it works everywhere:
+  // localhost, GitHub Pages, or any custom domain
+  const redirectTo = window.location.origin + window.location.pathname;
+  const { error } = await _client.auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: true, emailRedirectTo: redirectTo },
+  });
   if (error) throw error;
   return true;
 }
