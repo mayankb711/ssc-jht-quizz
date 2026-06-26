@@ -1,0 +1,222 @@
+/* ============================================================
+   ui/tokens/index.css — Design token system
+   Base themes (Light/Dark) with modifiers (AMOLED, Eye Comfort, High Contrast)
+   ============================================================ */
+
+:root {
+  /* === Base Theme: Dark (default) === */
+  --token-bg: #0f1420;
+  --token-bg-elevated: #111827;
+  --token-surface: #171e2e;
+  --token-surface-2: #1f2940;
+  --token-surface-3: #26314a;
+  --token-border: #2a3650;
+  --token-text: #e6ebf5;
+  --token-text-dim: #9aa6c0;
+  
+  /* Semantic colors */
+  --token-accent-primary: #6ee7b7;
+  --token-accent-secondary: #60a5fa;
+  --token-accent-tertiary: #c4b5fd;
+  --token-danger: #f87171;
+  --token-warning: #fbbf24;
+  --token-success: #34d399;
+  --token-info: #38bdf8;
+  
+  /* Effects */
+  --token-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  --token-shadow-soft: 0 6px 20px rgba(0, 0, 0, 0.18);
+  
+  /* Spacing */
+  --token-space-xs: 4px;
+  --token-space-sm: 8px;
+  --token-space-md: 16px;
+  --token-space-lg: 22px;
+  --token-space-xl: 32px;
+  
+  /* Border radius */
+  --token-radius-sm: 12px;
+  --token-radius-md: 18px;
+  --token-radius-lg: 24px;
+  --token-radius-full: 999px;
+  
+  /* Typography */
+  --token-font-hi: 'Noto Sans Devanagari', 'Mangal', system-ui, sans-serif;
+  --token-font-en: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --token-font-size-base: 17px;
+  --token-font-size-sm: 14px;
+  --token-font-size-lg: 20px;
+  
+  /* Layout */
+  --token-max-width: 1160px;
+  
+  /* Focus ring */
+  --token-focus-ring: color-mix(in srgb, var(--token-accent-secondary) 55%, transparent);
+  
+  /* Background pattern */
+  --token-pattern: radial-gradient(circle at top right, color-mix(in srgb, var(--token-accent-secondary) 18%, transparent), transparent 30%),
+                   radial-gradient(circle at left center, color-mix(in srgb, var(--token-accent-primary) 10%, transparent), transparent 22%);
+}
+
+/* === Base Theme: Light === */
+[data-theme-base="light"] {
+  --token-bg: #f5f7fb;
+  --token-bg-elevated: #edf2fb;
+  --token-surface: #ffffff;
+  --token-surface-2: #eef2f9;
+  --token-surface-3: #e2e8f5;
+  --token-border: #d8e0ee;
+  --token-text: #16203a;
+  --token-text-dim: #5a6781;
+  
+  --token-accent-primary: #0f9d6b;
+  --token-accent-secondary: #2563eb;
+  --token-accent-tertiary: #7c3aed;
+  
+  --token-shadow: 0 12px 24px rgba(20, 30, 60, 0.09);
+  --token-shadow-soft: 0 8px 18px rgba(20, 30, 60, 0.06);
+}
+
+/* === Modifier: AMOLED === */
+[data-theme-modifier="amoled"] {
+  --token-bg: #000000;
+  --token-bg-elevated: #050505;
+  --token-surface: #0b0b0c;
+  --token-surface-2: #121214;
+  --token-surface-3: #1a1a1d;
+  --token-border: #2a2a2d;
+  --token-text: #f3f4f6;
+  --token-text-dim: #a1a1aa;
+  
+  --token-accent-primary: #7cf0c9;
+  --token-accent-secondary: #8ab4f8;
+}
+
+/* === Modifier: Eye Comfort === */
+[data-theme-modifier="eye"] {
+  --token-bg: #0f1714;
+  --token-bg-elevated: #14201b;
+  --token-surface: #182521;
+  --token-surface-2: #20312b;
+  --token-surface-3: #2a3e36;
+  --token-border: #365046;
+  --token-text: #edf7ef;
+  --token-text-dim: #a8bdb0;
+  
+  --token-accent-primary: #9de4b0;
+  --token-accent-secondary: #89cff0;
+}
+
+/* === Modifier: High Contrast === */
+[data-theme-modifier="contrast"] {
+  --token-bg: #000000;
+  --token-bg-elevated: #000000;
+  --token-surface: #0a0a0a;
+  --token-surface-2: #111111;
+  --token-surface-3: #171717;
+  --token-border: #ffffff;
+  --token-text: #ffffff;
+  --token-text-dim: #ffffff;
+  
+  --token-accent-primary: #00ff9d;
+  --token-accent-secondary: #00d4ff;
+  
+  --token-shadow: none;
+  --token-shadow-soft: none;
+}
+
+/* === Legacy theme attribute support === */
+/* Maps existing theme names to base+modifier combinations */
+[data-theme="light"] {
+  --token-bg: #f5f7fb;
+  --token-bg-elevated: #edf2fb;
+  --token-surface: #ffffff;
+  --token-surface-2: #eef2f9;
+  --token-surface-3: #e2e8f5;
+  --token-border: #d8e0ee;
+  --token-text: #16203a;
+  --token-text-dim: #5a6781;
+  
+  --token-accent-primary: #0f9d6b;
+  --token-accent-secondary: #2563eb;
+  --token-accent-tertiary: #7c3aed;
+  
+  --token-shadow: 0 12px 24px rgba(20, 30, 60, 0.09);
+  --token-shadow-soft: 0 8px 18px rgba(20, 30, 60, 0.06);
+}
+
+[data-theme="amoled"] {
+  --token-bg: #000000;
+  --token-bg-elevated: #050505;
+  --token-surface: #0b0b0c;
+  --token-surface-2: #121214;
+  --token-surface-3: #1a1a1d;
+  --token-border: #2a2a2d;
+  --token-text: #f3f4f6;
+  --token-text-dim: #a1a1aa;
+  
+  --token-accent-primary: #7cf0c9;
+  --token-accent-secondary: #8ab4f8;
+}
+
+[data-theme="eye"] {
+  --token-bg: #0f1714;
+  --token-bg-elevated: #14201b;
+  --token-surface: #182521;
+  --token-surface-2: #20312b;
+  --token-surface-3: #2a3e36;
+  --token-border: #365046;
+  --token-text: #edf7ef;
+  --token-text-dim: #a8bdb0;
+  
+  --token-accent-primary: #9de4b0;
+  --token-accent-secondary: #89cff0;
+}
+
+[data-theme="contrast"] {
+  --token-bg: #000000;
+  --token-bg-elevated: #000000;
+  --token-surface: #0a0a0a;
+  --token-surface-2: #111111;
+  --token-surface-3: #171717;
+  --token-border: #ffffff;
+  --token-text: #ffffff;
+  --token-text-dim: #ffffff;
+  
+  --token-accent-primary: #00ff9d;
+  --token-accent-secondary: #00d4ff;
+  
+  --token-shadow: none;
+  --token-shadow-soft: none;
+}
+
+/* === Map tokens to existing CSS variable names === */
+:root {
+  --bg: var(--token-bg);
+  --bg-elev: var(--token-bg-elevated);
+  --surface: var(--token-surface);
+  --surface-2: var(--token-surface-2);
+  --surface-3: var(--token-surface-3);
+  --border: var(--token-border);
+  --text: var(--token-text);
+  --text-dim: var(--token-text-dim);
+  --accent: var(--token-accent-primary);
+  --accent-2: var(--token-accent-secondary);
+  --accent-3: var(--token-accent-tertiary);
+  --danger: var(--token-danger);
+  --warn: var(--token-warning);
+  --good: var(--token-success);
+  --info: var(--token-info);
+  --shadow: var(--token-shadow);
+  --shadow-soft: var(--token-shadow-soft);
+  --radius: var(--token-radius-md);
+  --radius-lg: var(--token-radius-lg);
+  --radius-sm: var(--token-radius-sm);
+  --pad: var(--token-space-md);
+  --pad-lg: var(--token-space-lg);
+  --maxw: var(--token-max-width);
+  --font-hi: var(--token-font-hi);
+  --font-en: var(--token-font-en);
+  --ring: var(--token-focus-ring);
+  --pattern: var(--token-pattern);
+}
