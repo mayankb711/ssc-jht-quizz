@@ -1,12 +1,12 @@
-/* ============================================================
-   progress.js — records attempts, computes scores, streaks, and
+﻿/* ============================================================
+   progress.js â€” records attempts, computes scores, streaks, and
    per-topic mastery summaries shown on Home/Progress screens.
    Online-first: every write also pushes to cloud; reads pull
    from cloud first, falling back to local cache.
    ============================================================ */
 
 import { allAttempts, kvGet, kvSet } from '../store/local.js';
-import { recordAttempt, fetchAttempts } from '../store/supabase.js';
+import { recordAttempt, fetchAttempts } from '../store/cloud.js';
 
 let _idc = 0;
 function newId() { _idc++; return `${Date.now().toString(36)}-${_idc}-${Math.random().toString(36).slice(2,7)}`; }
@@ -30,7 +30,7 @@ export async function record({ question, chosen, mode }) {
 }
 
 // ---- scoring ----
-export const NEGATIVE = 0.25;   // −0.25 per wrong, per real SSC JHT rules
+export const NEGATIVE = 0.25;   // âˆ’0.25 per wrong, per real SSC JHT rules
 export function scoreSession(attempts) {
   let correct = 0, wrong = 0, unattempted = 0;
   for (const a of attempts) {

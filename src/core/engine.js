@@ -1,5 +1,5 @@
-/* ============================================================
-   engine.js — adaptive question selection (LOCAL, 0 neurons).
+﻿/* ============================================================
+   engine.js â€” adaptive question selection (LOCAL, 0 neurons).
    Algorithm: weighted lottery where each (topic) and (difficulty)
    weight is derived from the learner's mastery curve.
    - Weak topics get higher weight (drill weak areas).
@@ -14,7 +14,7 @@ import { QUESTIONS } from '../data/questions.js';
 import { TOPICS } from '../data/topics.js';
 import { allAttempts } from '../store/local.js';
 import { getGeneratedBank } from '../ai/client.js';
-import { fetchAttempts } from '../store/supabase.js';
+import { fetchAttempts } from '../store/cloud.js';
 
 const DAY = 86400000;
 

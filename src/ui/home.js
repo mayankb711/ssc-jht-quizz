@@ -5,6 +5,7 @@
 
 import { summary } from '../core/progress.js';
 import { getUsage } from '../ai/client.js';
+import { allAttempts, kvGet } from '../store/local.js';
 
 export async function mount(wrap, params, { topbar, go }) {
   wrap.innerHTML = `${topbar('SSC JHT', 'Paper 1 practice')}
@@ -58,6 +59,30 @@ export async function mount(wrap, params, { topbar, go }) {
       </div>
     </div>
 
+        <div class="ui-row ui-mb-md" style="display: flex; gap: 12px; flex-wrap: wrap;">
+      <div class="ui-card" style="flex: 1; min-width: 140px;">
+        <div class="ui-stat">
+          <div class="ui-stat__value" id="today-count">-</div>
+          <div class="ui-stat__label">Today</div>
+          <div class="ui-stat__sub">of goal</div>
+        </div>
+      </div>
+      <div class="ui-card" style="flex: 1; min-width: 140px;">
+        <div class="ui-stat">
+          <div class="ui-stat__value" id="due-count">-</div>
+          <div class="ui-stat__label">Due</div>
+          <div class="ui-stat__sub">for review</div>
+        </div>
+      </div>
+      <div class="ui-card" style="flex: 1; min-width: 140px;">
+        <div class="ui-stat">
+          <div class="ui-stat__value" id="bm-count">-</div>
+          <div class="ui-stat__label">Bookmarked</div>
+          <div class="ui-stat__sub">questions</div>
+        </div>
+      </div>
+    </div>
+
     <div class="ui-section-head">
       <h2 class="ui-section-head__title">Choose a mode</h2>
       <span class="ui-muted">Start in the format that matches your study goal</span>
@@ -69,17 +94,13 @@ export async function mount(wrap, params, { topbar, go }) {
         <span class="desc">200 Q, 2 hours, negative marking.</span>
       </div>
       <div class="ui-card ui-card--interactive ui-card--glow mode-card" data-mode="quick">
-        <span class="emoji">⚡</span>
-        <strong>Quick Quiz</strong>
-        <span class="desc">20 adaptive questions across both subjects.</span>
-      </div>
-      <div class="ui-card ui-card--interactive ui-card--glow mode-card" data-mode="topic">
-        <span class="emoji">🎯</span>
-        <strong>Topic Practice</strong>
-        <span class="desc">Drill one subject or topic.</span>
+              <div class="ui-card ui-card--interactive ui-card--glow mode-card" data-mode="bookmarked">
+        <span class="emoji">📌</span>
+        <strong>Bookmarked</strong>
+        <span class="desc">Review questions you have bookmarked.</span>
       </div>
       <div class="ui-card ui-card--interactive ui-card--glow mode-card" data-mode="mistakes">
-        <span class="emoji">🔁</span>
+        <span class="emoji"></span>
         <strong>Review Mistakes</strong>
         <span class="desc">Re-attempt questions you got wrong before.</span>
       </div>
@@ -106,6 +127,19 @@ export async function mount(wrap, params, { topbar, go }) {
         `}
       </div>
     </div>`;
+
+  // populate daily goal, due count, bookmark count
+  ;(async () => {
+    const goal = await kvGet('daily_goal', 30);
+    const all = await allAttempts();
+    const todayStr = new Date().toDateString();
+    const todayCount = all.filter(function(a) { return new Date(a.ts).toDateString() === todayStr; }).length;
+    document.getElementById('today-count').textContent = todayCount + '/' + goal;
+    const due = all.filter(function(a) { return !a.correct; }).length;
+    document.getElementById('due-count').textContent = due > 0 ? due : '0';
+    const bm = await kvGet('bookmarks', []);
+    document.getElementById('bm-count').textContent = bm.length;
+  })();
 
   wrap.querySelectorAll('[data-mode]').forEach(el => {
     el.addEventListener('click', () => {

@@ -1,9 +1,9 @@
-/*
-  main.js — entry + hash router.
+﻿/*
+  main.js â€” entry + hash router.
 */
 
 import { kvGet } from './store/local.js';
-import { configure as sbConfigure, autoPull, getStatus as sbStatus } from './store/supabase.js';
+import { configure, autoPull, getStatus } from './store/cloud.js';
 import { logError } from './core/diagnostics.js';
 import { APP } from './config/app.js';
 
@@ -52,23 +52,23 @@ async function initTheme() {
   const theme = await kvGet('theme', 'dark');
   document.documentElement.setAttribute('data-theme', theme || 'dark');
   document.title = `${APP.name} - ${APP.subtitle}`;
-  await sbConfigure();
+  await configure();
   // auto-pull cloud data if signed in (best-effort, offline-first)
   autoPull().catch(() => {});
 }
 
 function topbar(title, sub) {
-  const st = sbStatus();
-  const connDot = st.configured ? (st.online ? '🟢' : '🔴') : '';
+  const st = getStatus();
+  const connDot = st.configured ? (st.online ? 'ðŸŸ¢' : 'ðŸ”´') : '';
   const connTitle = st.configured ? (st.online ? 'Cloud connected' : 'Offline mode') : '';
   return `
     <div class="ui-topbar">
       <div class="ui-brand">${title}${sub ? `<span class="sub">${sub}</span>` : ''}</div>
       <div class="ui-topbar__nav">
         ${connDot ? `<span class="ui-conn-dot" title="${connTitle}">${connDot}</span>` : ''}
-        <button class="ui-nav-btn" data-go="diagnostics" title="Diagnostics"><span class="ui-nav-btn__icon">🔍</span> Diag</button>
-        <button class="ui-nav-btn" data-go="progress" title="Progress"><span class="ui-nav-btn__icon">📊</span> Progress</button>
-        <button class="ui-nav-btn" data-go="settings" title="Settings"><span class="ui-nav-btn__icon">⚙️</span> Settings</button>
+        <button class="ui-nav-btn" data-go="diagnostics" title="Diagnostics"><span class="ui-nav-btn__icon">ðŸ”</span> Diag</button>
+        <button class="ui-nav-btn" data-go="progress" title="Progress"><span class="ui-nav-btn__icon">ðŸ“Š</span> Progress</button>
+        <button class="ui-nav-btn" data-go="settings" title="Settings"><span class="ui-nav-btn__icon">âš™ï¸</span> Settings</button>
       </div>
     </div>`;
 }
@@ -77,10 +77,10 @@ async function render() {
   try {
     const hash = location.hash.replace(/^#/, '');
 
-    // If the hash contains Supabase auth tokens, don't route — let Supabase
+    // If the hash contains Supabase auth tokens, don't route â€” let Supabase
     // recover the session, then clean the URL and go home.
     if (hash.includes('access_token') || hash.includes('type=recovery')) {
-      await sbConfigure();
+      await configure();
       history.replaceState(null, '', window.location.pathname);
       location.hash = 'screen=home';
       return;

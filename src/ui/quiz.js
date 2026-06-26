@@ -9,7 +9,7 @@ import { startMock, finishMock, MOCK } from '../core/mocktest.js';
 import { record } from '../core/progress.js';
 import { QUESTIONS } from '../data/questions.js';
 import { TOPICS, SUBJECTS, topicsBySubject } from '../data/topics.js';
-import { allAttempts } from '../store/local.js';
+import { allAttempts, kvGet, kvSet } from '../store/local.js';
 import { explain, generateQuestions, getGeneratedBank } from '../ai/client.js';
 import { quizInitialState, quizReducer } from '../features/quiz/session.js';
 import { emit } from '../shared/events.js';
@@ -21,6 +21,7 @@ export async function mount(wrap, params, { topbar, go }) {
 
   if (mode === 'topic') return setupTopic(body, go);
   if (mode === 'mistakes') return startMistakes(body, go);
+  if (mode === 'bookmarked') return startBookmarked(body, go);
 
   let questions = [];
   let timed = false;
@@ -62,7 +63,7 @@ export async function mount(wrap, params, { topbar, go }) {
 }
 
 function modeLabel(m) {
-  return ({ mock: 'Full Mock Test', quick: 'Quick Quiz', topic: 'Topic Practice', mistakes: 'Review Mistakes' })[m] || 'Quiz';
+  return ({ mock: 'Full Mock Test', quick: 'Quick Quiz', topic: 'Topic Practice', mistakes: 'Review Mistakes', bookmarked: 'Review Bookmarks' })[m] || 'Quiz';
 }
 
 // ---------- TOPIC picker ----------
@@ -137,6 +138,31 @@ function setupTopic(body, go) {
   });
 }
 
+// ---------- BOOKMARKED mode ----------
+async function startBookmarked(body, go) {
+  const bm = await kvGet('bookmarks', []);
+  if (!bm.length) {
+    body.innerHTML = `
+      <div class="ui-empty">
+        <div class="ui-empty__icon">📍</div>
+        <h3>No bookmarked questions yet.</h3>
+        <p class="ui-muted">Tap the bookmark icon on any question to save it here.</p>
+        <div class="ui-empty__action">
+          <button class="ui-btn ui-btn--secondary" onclick="location.hash='screen=home'">Back home</button>
+        </div>
+      </div>`;
+    return;
+  }
+  const generated = await getGeneratedBank();
+  const bank = [...QUESTIONS, ...generated];
+  let questions = bm.map(function(id) { return bank.find(function(q) { return q.id === id; }); }).filter(Boolean);
+  if (!questions.length) {
+    body.innerHTML = '<div class="ui-empty"><h3>Bookmarked questions not found in question bank.</h3></div>';
+    return;
+  }
+  return runSession(body, { questions: questions, mode: 'bookmarked', timed: false, deadline: 0, go: go });
+}
+
 // ---------- MISTAKES mode ----------
 async function startMistakes(body, go) {
   const attempts = await allAttempts();
@@ -161,6 +187,8 @@ async function startMistakes(body, go) {
 
 // ---------- main session runner ----------
 function runSession(body, { questions, mode, timed, deadline, go }) {
+  let bookmarked = false;
+  ;(async () => { const bm = await kvGet('bookmarks', []); if (questions[0]) bookmarked = bm.includes(questions[0].id); render(); })();
   let state = quizInitialState(questions, mode);
   if (timed) state = quizReducer(state, { type: 'set_timing', timed: true, deadline });
   let timerHandle = null;
@@ -188,7 +216,10 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
         ${timeLeft}
       </div>
       ${q.passage ? `<div class="ui-passage hi">${esc(q.passage)}</div>` : ''}
-      <div class="ui-stem${q.lang==='hi' ? ' hi' : ''}">${state.index+1}. ${esc(q.stem)}</div>
+      <div class="ui-stem-row">
+        <div class="ui-stem${q.lang==='hi' ? ' hi' : ''}">${state.index+1}. ${esc(q.stem)}</div>
+        <button class="ui-btn ui-bookmark-btn" id="bm-toggle" title="Bookmark this question">${bookmarked ? "🔖" : "📌"}</button>
+      </div>
       <div class="q-options" id="opts">
         ${q.options.map((o, idx) => optHtml(o, idx, q, state.answers[state.index], immediate && state.revealed)).join('')}
       </div>
@@ -246,7 +277,17 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
       }
     };
 
-    document.getElementById('check')?.addEventListener('click', onCheck);
+        document.getElementById('bm-toggle')?.addEventListener('click', async () => {
+      if (!questions[state.index]) return;
+      const qid = questions[state.index].id;
+      const bm = await kvGet('bookmarks', []);
+      const idx = bm.indexOf(qid);
+      if (idx >= 0) { bm.splice(idx, 1); bookmarked = false; }
+      else { bm.push(qid); bookmarked = true; }
+      await kvSet('bookmarks', bm);
+      render();
+    });
+document.getElementById('check')?.addEventListener('click', onCheck);
     document.getElementById('next')?.addEventListener('click', () => { state = quizReducer(state, { type: 'next' }); render(); });
     document.getElementById('prev')?.addEventListener('click', () => { state = quizReducer(state, { type: 'prev' }); render(); });
     document.getElementById('skip')?.addEventListener('click', () => { state = quizReducer(state, { type: 'skip' }); render(); });

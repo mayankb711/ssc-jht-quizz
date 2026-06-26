@@ -1,4 +1,4 @@
-import { allAttempts, allGeneratedQuestions, kvGet, kvSet, replaceAttempts } from '../store/local.js';
+﻿import { allAttempts, allGeneratedQuestions, kvGet, kvSet, replaceAttempts } from '../store/local.js';
 import { getReports } from './diagnostics.js';
 import { QUESTIONS } from '../data/questions.js';
 
@@ -15,8 +15,8 @@ export async function exportBackupPayload() {
       cf_token: await kvGet('cf_token', ''),
       cf_model: await kvGet('cf_model', '@cf/meta/llama-3-8b-instruct'),
       neuron_cap: await kvGet('neuron_cap', 8000),
-      sb_url: await kvGet('sb_url', ''),
-      sb_key: await kvGet('sb_key', ''),
+      fb_project_id: await kvGet('fb_project_id', ''),
+      fb_api_key: await kvGet('fb_api_key', ''),
     },
     sourceCounts: {
       curatedQuestions: QUESTIONS.length,
@@ -44,8 +44,8 @@ export async function importBackupPayload(payload) {
   if (settings.cf_token != null) await kvSet('cf_token', String(settings.cf_token));
   if (settings.cf_model != null) await kvSet('cf_model', String(settings.cf_model));
   if (settings.neuron_cap != null) await kvSet('neuron_cap', Number(settings.neuron_cap) || 8000);
-  if (settings.sb_url != null) await kvSet('sb_url', String(settings.sb_url));
-  if (settings.sb_key != null) await kvSet('sb_key', String(settings.sb_key));
+  if (settings.fb_project_id != null) await kvSet('fb_project_id', String(settings.fb_project_id));
+  if (settings.fb_api_key != null) await kvSet('fb_api_key', String(settings.fb_api_key));
 
   const imported = {
     attempts: Array.isArray(payload.attempts) ? payload.attempts.length : 0,

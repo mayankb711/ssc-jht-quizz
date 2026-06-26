@@ -1,12 +1,11 @@
-/* Settings screen
-   Enhanced with live Supabase sync status. */
+﻿/* Settings screen
+   Enhanced with live Firebase sync status. */
 
 import { kvGet, kvSet } from '../store/local.js';
 import {
-  configure as sbConfigure,
-  signInMagic, signOut, getSession, getStatus,
-  push as sbPush, pull as sbPull, onAuthChange,
-} from '../store/supabase.js';
+  configure, signInMagic, signOut, getSession, getStatus,
+  push as cloudPush, pull as cloudPull, onAuthChange,
+} from '../store/cloud.js';
 import { getUsage } from '../ai/client.js';
 import { downloadBackup, importBackupPayload } from '../core/backup.js';
 import { APP } from '../config/app.js';
@@ -20,13 +19,14 @@ export async function mount(wrap, params, { topbar, go }) {
   const cfToken   = await kvGet('cf_token', '');
   const cfModel   = await kvGet('cf_model', '@cf/meta/llama-3-8b-instruct');
   const cap       = await kvGet('neuron_cap', APP.defaultNeuronCap);
-  const sbUrl     = await kvGet('sb_url', '');
-  const sbKey     = await kvGet('sb_key', '');
+  const fbProject = await kvGet('fb_project_id', '');
+  const fbKey     = await kvGet('fb_api_key', '');
+  const goal      = await kvGet('daily_goal', 30);
   const u         = await getUsage();
-  let sbStatus    = getStatus();
+  let cloudStatus = getStatus();
 
   const unsub = onAuthChange(() => {
-    sbStatus = getStatus();
+    cloudStatus = getStatus();
     renderSyncSection();
   });
 
@@ -57,7 +57,7 @@ export async function mount(wrap, params, { topbar, go }) {
           <h2 class="ui-section-head__title">AI Explanations</h2>
         </div>
         <div class="ui-card__body">
-          <p class="ui-muted ui-text-sm">Paste your Cloudflare credentials to enable AI explanations. They're cached forever, so each concept costs only once.</p>
+          <p class="ui-muted ui-text-sm">Paste your Cloudflare credentials to enable AI explanations. They\'re cached forever, so each concept costs only once.</p>
           <div class="ui-field">
             <label class="ui-field__label">Cloudflare Account ID</label>
             <input id="cf_account" class="ui-input" value="${esc(cfAccount)}" placeholder="e.g. abcd1234">
@@ -89,17 +89,31 @@ export async function mount(wrap, params, { topbar, go }) {
           <h2 class="ui-section-head__title">Cloud Sync</h2>
         </div>
         <div class="ui-card__body">
-          <p class="ui-muted ui-text-sm">Syncs your progress across devices. Create a free project at <b>supabase.com</b>, run the schema from <b>supabase/schema.sql</b>, then paste credentials below.</p>
+          <p class="ui-muted ui-text-sm">Syncs your progress across devices via <b>Firebase Firestore</b> (REST API, free tier). Create a project at <b>console.firebase.google.com</b>, enable Firestore, then paste the Web API Key and Project ID below.</p>
           <div class="ui-field">
-            <label class="ui-field__label">Project URL</label>
-            <input id="sb_url" class="ui-input" value="${esc(sbUrl)}" placeholder="https://xxxx.supabase.co">
+            <label class="ui-field__label">Project ID</label>
+            <input id="fb_project_id" class="ui-input" value="${esc(fbProject)}" placeholder="my-project-abc12">
           </div>
           <div class="ui-field">
-            <label class="ui-field__label">Anon public key</label>
-            <input id="sb_key" class="ui-input" value="${esc(sbKey)}" placeholder="eyJhbGciOi...">
+            <label class="ui-field__label">Web API Key</label>
+            <input id="fb_api_key" class="ui-input" type="password" value="${esc(fbKey)}" placeholder="AIzaSy...">
           </div>
-          <button class="ui-btn" id="save-sb">Save and connect</button>
-          <div id="sb-status" class="ui-mt-md"></div>
+          <button class="ui-btn" id="save-fb">Save and connect</button>
+          <div id="fb-status" class="ui-mt-md"></div>
+        </div>
+      </div>
+
+      <div class="ui-card settings-card">
+        <div class="ui-card__header">
+          <h2 class="ui-section-head__title">Daily Goal</h2>
+        </div>
+        <div class="ui-card__body">
+          <p class="ui-muted ui-text-sm">Set a daily question-answer target. Your progress shows on the home screen.</p>
+          <div class="ui-field">
+            <label class="ui-field__label">Questions per day</label>
+            <input id="daily_goal" class="ui-input" type="number" min="5" max="500" value="${goal}">
+          </div>
+          <button class="ui-btn" id="save-goal">Save goal</button>
         </div>
       </div>
 
@@ -134,97 +148,93 @@ export async function mount(wrap, params, { topbar, go }) {
       await kvSet('neuron_cap', parseInt(document.getElementById('neuron_cap').value,10)||APP.defaultNeuronCap);
       flash('AI settings saved.');
     });
-    document.getElementById('save-sb').addEventListener('click', async () => {
-      await kvSet('sb_url', document.getElementById('sb_url').value.trim());
-      await kvSet('sb_key', document.getElementById('sb_key').value.trim());
-      const ok = await sbConfigure();
-      flash(ok ? 'Supabase connected.' : 'Could not connect. Check URL and key.');
+    document.getElementById('save-fb').addEventListener('click', async () => {
+      await kvSet('fb_project_id', document.getElementById('fb_project_id').value.trim());
+      await kvSet('fb_api_key', document.getElementById('fb_api_key').value.trim());
+      const ok = await configure();
+      flash(ok ? 'Firebase connected.' : 'Could not connect. Check Project ID and API Key.');
       if (ok) {
-        sbStatus = getStatus();
+        cloudStatus = getStatus();
         renderSyncSection();
+      }
+    });
+    document.getElementById('save-goal').addEventListener('click', async () => {
+      const val = parseInt(document.getElementById('daily_goal').value, 10);
+      if (val >= 5 && val <= 500) {
+        await kvSet('daily_goal', val);
+        flash('Daily goal saved.');
+      } else {
+        flash('Enter a number between 5 and 500.');
       }
     });
   }
 
   function renderSyncSection() {
-    const el = document.getElementById('sb-status');
+    const el = document.getElementById('fb-status');
     if (!el) return;
 
-    if (!sbStatus.configured) {
+    if (!cloudStatus.configured) {
       el.innerHTML = '<p class="ui-text-sm ui-muted">Enter credentials above and click <b>Save and connect</b>.</p>';
       return;
     }
 
-    const onlineBadge = sbStatus.online ? '<span class="ui-badge ui-badge--info">Online</span>' : '<span class="ui-badge ui-badge--warn">Offline</span>';
+    const onlineBadge = cloudStatus.online ? '<span class="ui-badge ui-badge--info">Online</span>' : '<span class="ui-badge ui-badge--warn">Offline</span>';
+    const deviceId = cloudStatus.user?.id || '';
+    const providerBadge = '<span class="ui-badge ui-badge--good">Firebase</span>';
 
-    const authHtml = sbStatus.signedIn ? `
+    const authHtml = cloudStatus.signedIn ? `
       <div class="ui-card__body ui-sync-status">
         <div class="ui-sync-row">
-          <span class="ui-badge ui-badge--good">Signed in</span>
+          ${providerBadge}
           ${onlineBadge}
-          <span class="ui-sync-email ui-muted">${esc(sbStatus.user?.email || 'Connected')}</span>
+          <span class="ui-sync-email ui-muted">Device: ${esc(deviceId.slice(0, 20))}...</span>
         </div>
-        <div class="ui-sync-row${sbStatus.syncInProgress ? '' : ' ui-sync-row--last'}">
-          <span class="ui-badge ui-badge--neutral">Last sync: ${sbStatus.lastSyncAt || 'never'}</span>
-          ${sbStatus.syncInProgress ? '<span class="ui-spinner ui-spinner--small" style="margin: 0;"></span>' : ''}
+        <div class="ui-sync-row${cloudStatus.syncInProgress ? '' : ' ui-sync-row--last'}">
+          <span class="ui-badge ui-badge--neutral">Last sync: ${cloudStatus.lastSyncAt || 'never'}</span>
+          ${cloudStatus.syncInProgress ? '<span class="ui-spinner ui-spinner--small" style="margin: 0;"></span>' : ''}
         </div>
-        <div class="ui-btn-row${sbStatus.syncInProgress ? '' : ' ui-mt-sm'}">
-          <button class="ui-btn" id="sb-push" ${sbStatus.syncInProgress ? 'disabled' : ''}>
-            ${sbStatus.syncInProgress ? 'Syncing…' : 'Sync now ↑'}
+        <div class="ui-btn-row${cloudStatus.syncInProgress ? '' : ' ui-mt-sm'}">
+          <button class="ui-btn" id="fb-push" ${cloudStatus.syncInProgress ? 'disabled' : ''}>
+            ${cloudStatus.syncInProgress ? 'Syncing...' : 'Sync now \u2191'}
           </button>
-          <button class="ui-btn ui-btn--secondary" id="sb-pull" ${sbStatus.syncInProgress ? 'disabled' : ''}>Pull ↓</button>
-          <button class="ui-btn ui-btn--ghost" id="sb-signout">Sign out</button>
+          <button class="ui-btn ui-btn--secondary" id="fb-pull" ${cloudStatus.syncInProgress ? 'disabled' : ''}>Pull \u2193</button>
+          <button class="ui-btn ui-btn--ghost" id="fb-copy-id" title="Copy device ID">Copy ID</button>
         </div>
       </div>` : `
       <div class="ui-card__body ui-sync-status">
         <div class="ui-sync-row">
+          ${providerBadge}
           ${onlineBadge}
-          <span class="ui-sync-email ui-muted">Connected. Sign in to sync.</span>
+          <span class="ui-sync-email ui-muted">Firebase configured and ready.</span>
         </div>
-        <div class="ui-field">
-          <label class="ui-field__label">Email</label>
-          <input id="sb-email" class="ui-input" placeholder="you@email.com">
-        </div>
-        <button class="ui-btn" id="sb-magic">Send magic link</button>
       </div>`;
 
     el.innerHTML = authHtml;
 
-    document.getElementById('sb-magic')?.addEventListener('click', async () => {
-      try {
-        await signInMagic(document.getElementById('sb-email').value.trim());
-        flash('Magic link sent. Check email, then reload.');
-      } catch (e) {
-        flash('Error: ' + e.message);
-      }
-    });
-
-    document.getElementById('sb-push')?.addEventListener('click', async () => {
-      const btn = document.getElementById('sb-push');
+    document.getElementById('fb-push')?.addEventListener('click', async () => {
+      const btn = document.getElementById('fb-push');
       btn.disabled = true;
-      btn.textContent = 'Syncing…';
-      const r = await sbPush();
+      btn.textContent = 'Syncing...';
+      const r = await cloudPush();
       flash(r.ok ? `Pushed ${r.pushed} items.` : 'Push failed: ' + r.reason);
-      sbStatus = getStatus();
+      cloudStatus = getStatus();
       renderSyncSection();
     });
 
-    document.getElementById('sb-pull')?.addEventListener('click', async () => {
-      const btn = document.getElementById('sb-pull');
+    document.getElementById('fb-pull')?.addEventListener('click', async () => {
+      const btn = document.getElementById('fb-pull');
       btn.disabled = true;
-      btn.textContent = 'Pulling…';
-      const r = await sbPull();
-      flash(r.ok ? `Pulled ${r.pulled}, merged ${r.merged}.` : 'Pull failed: ' + r.reason);
-      sbStatus = getStatus();
+      btn.textContent = 'Pulling...';
+      const r = await cloudPull();
+      flash(r.ok ? 'Sync complete.' : 'Pull failed: ' + r.reason);
+      cloudStatus = getStatus();
       renderSyncSection();
     });
 
-    document.getElementById('sb-signout')?.addEventListener('click', async () => {
-      if (!confirm('Sign out of cloud sync?')) return;
-      await signOut();
-      sbStatus = getStatus();
-      renderSyncSection();
-      flash('Signed out.');
+    document.getElementById('fb-copy-id')?.addEventListener('click', () => {
+      if (deviceId) {
+        navigator.clipboard.writeText(deviceId).then(() => flash('Device ID copied.'), () => {});
+      }
     });
   }
 

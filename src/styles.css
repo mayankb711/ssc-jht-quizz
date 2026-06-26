@@ -374,3 +374,20 @@ a:hover {
     color: black !important;
   }
 }
+
+/* Bookmark button */
+.ui-bookmark-btn {
+  background: none;
+  border: none;
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+.ui-bookmark-btn:hover { opacity: 1; }
+.ui-stem-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
