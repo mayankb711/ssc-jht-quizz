@@ -1,6 +1,7 @@
 ﻿import { kvGet, kvSet, allAttempts, allGeneratedQuestions, upsertGeneratedQuestion, replaceAttempts, addAttempt } from './local.js';
 import { logError } from '../core/diagnostics.js';
 import { KV_KEYS } from '../config/app.js';
+import { FIREBASE_CONFIG } from '../config/firebase.js';
 
 let _config = null;
 let _deviceId = null;
@@ -98,9 +99,18 @@ function toFields(obj) {
 }
 
 export async function configure() {
-  const projectId = await kvGet(KV_KEYS.fbProjectId);
-  const apiKey = await kvGet(KV_KEYS.fbApiKey);
-  if (!projectId || !apiKey) { _config = null; _deviceId = null; notify(); return false; }
+  let projectId = await kvGet(KV_KEYS.fbProjectId);
+  let apiKey = await kvGet(KV_KEYS.fbApiKey);
+  if (!projectId || !apiKey) {
+    if (FIREBASE_CONFIG.projectId && FIREBASE_CONFIG.apiKey) {
+      projectId = FIREBASE_CONFIG.projectId;
+      apiKey = FIREBASE_CONFIG.apiKey;
+      await kvSet(KV_KEYS.fbProjectId, projectId);
+      await kvSet(KV_KEYS.fbApiKey, apiKey);
+    } else {
+      _config = null; _deviceId = null; notify(); return false;
+    }
+  }
   try {
     _config = { projectId, apiKey };
     _deviceId = await getOrCreateDeviceId();

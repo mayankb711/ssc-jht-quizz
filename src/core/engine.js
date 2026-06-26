@@ -8,6 +8,9 @@ import { logError } from './diagnostics.js';
 import { LearningPlanner } from '../learning/planner.js';
 import { SessionComposer } from '../learning/composer.js';
 import { loadProfile, saveProfile } from '../learning/profile.js';
+import { rankQuestionsByEKG } from '../learning/recommender.js';
+import { shouldStopSession } from '../learning/goals.js';
+import { getCHTTopicWeight } from '../learning/paperAnalysis.js';
 
 const DAY = 86400000;
 let _planner = null;
@@ -72,7 +75,10 @@ export async function pick({ subject, topic, n = 20, pool } = {}) {
         return t && t.subject === subject;
       });
       if (topic) filtered = filtered.filter(q => q.topic === topic);
-      if (filtered.length >= n) return shuffle(filtered).slice(0, n);
+      if (filtered.length >= n) {
+        const ranked = await rankQuestionsByEKG(filtered, n);
+        return ranked.map(r => r.question);
+      }
       return shuffle(session.questions).slice(0, n);
     }
 
@@ -80,6 +86,17 @@ export async function pick({ subject, topic, n = 20, pool } = {}) {
   } catch (e) {
     logError(e, { file: 'engine.js', func: 'pick', action: 'planner pick', source: 'core', context: { subject, topic, n } });
     return fallbackPick({ subject, topic, n, pool });
+  }
+}
+
+export async function checkSessionHealth(recentAttempts) {
+  try {
+    const profile = await loadProfile();
+    const recent = recentAttempts.slice(-10);
+    const recentAcc = recent.length > 0 ? recent.filter(a => a.correct).length / recent.length : 1;
+    return shouldStopSession(recentAcc, profile);
+  } catch {
+    return { stop: false, reason: null };
   }
 }
 
@@ -106,7 +123,7 @@ async function fallbackPick({ subject, topic, n = 20, pool } = {}) {
       const acc = topicStats[q.topic] || { correct: 0, total: 0, lastTs: 0, streak: 0, lastWrong: 0 };
       const mastery = acc.total > 0 ? acc.correct / acc.total : 0.5;
       const daysSinceLast = rec ? (now - rec.last) / DAY : 999;
-      const interval = rec?.correct ? 3 * Math.pow(1.6, rec.correct ? 1 : 0) : 0.5;
+      const interval = rec?.correct ? 3 : 0.5;
       const isDue = rec && daysSinceLast >= interval;
       const isNeverSeen = !rec;
       const isWrong = wrongIds.has(q.id);
@@ -119,9 +136,20 @@ async function fallbackPick({ subject, topic, n = 20, pool } = {}) {
     }
 
     const chosen = [];
+    const paperWeighted = candidates
+      .filter(q => getCHTTopicWeight(q.topic || '') > 0.1)
+      .sort((a, b) => getCHTTopicWeight(b.topic || '') - getCHTTopicWeight(a.topic || ''));
     const takeFrom = (arr, pct) => {
       const need = Math.max(1, Math.round(n * pct));
-      const taken = shuffle(arr).slice(0, Math.min(need, arr.length));
+      let taken;
+      if (paperWeighted.length >= need * 0.3) {
+        const paperCandidates = arr.filter(q => paperWeighted.some(pw => pw.id === q.id));
+        taken = shuffle(paperCandidates).slice(0, Math.min(Math.round(need * 0.4), paperCandidates.length));
+        const remaining = arr.filter(q => !taken.some(t => t.id === q.id));
+        taken.push(...shuffle(remaining).slice(0, Math.min(need - taken.length, remaining.length)));
+      } else {
+        taken = shuffle(arr).slice(0, Math.min(need, arr.length));
+      }
       chosen.push(...taken);
       return taken.length;
     };

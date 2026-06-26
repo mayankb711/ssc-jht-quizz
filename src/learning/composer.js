@@ -46,7 +46,7 @@ export class SessionComposer {
 
           case 'weak_concept':
             if (segment.skill) {
-              questions = this.pickBySkill(bank, usedIds, segment.count, segment.skill);
+              questions = this.pickBySkill(bank, usedIds, segment.skill, segment.count);
             }
             if (questions.length === 0) {
               questions = this.pickWrong(bank, usedIds, wrongIds, segment.count);

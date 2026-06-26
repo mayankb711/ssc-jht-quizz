@@ -4,6 +4,7 @@ import { explain } from '../ai/client.js';
 import { logError } from '../core/diagnostics.js';
 import { knowledgeGraph } from '../learning/graph.js';
 import { getMemoryTip } from './quiz.js';
+import { getAutoFlashcards } from '../learning/recommender.js';
 
 export async function mount(wrap, params, { topbar, go }) {
   const mode = params.get('mode') || 'quick';
@@ -126,6 +127,17 @@ export async function mount(wrap, params, { topbar, go }) {
 
           if (related.length > 0) {
             html += `<p style="margin-top: 6px;"><b>📎 Practice more:</b> ${related.slice(0, 2).map(rq => `<button class="ui-err-btn" data-practice="${rq.id}" style="font-size: 0.75rem; margin: 1px;">Q${rq.id} — ${esc(rq.stem.slice(0, 40))}…</button>`).join(' ')}</p>`;
+          }
+
+          if (isWrong) {
+            getAutoFlashcards(q.id).then(cards => {
+              if (cards.length > 0) {
+                const fbHtml = cards.map(c => `<div style="margin-top:4px;padding:6px;background:var(--surface);border-radius:4px;font-size:0.78rem;">
+                  <b>${esc(c.front)}</b><br><span style="color:var(--text-muted);">${esc(c.back)}</span>
+                  <br><small>Review: ${c.revisionDate}</small></div>`).join('');
+                content.insertAdjacentHTML('beforeend', `<p style="margin-top: 6px;"><b>📇 Flashcards:</b></p>${fbHtml}`);
+              }
+            }).catch(() => {});
           }
 
           html += `<div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); font-size: 0.7rem; color: var(--text-dim);">${tag} explanation • <a href="#" class="teach-flag" data-qid="${q.id}" style="color: var(--accent);">🔖 Mark for review</a></div>`;

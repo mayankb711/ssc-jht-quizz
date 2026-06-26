@@ -4,6 +4,7 @@ import { logError } from './diagnostics.js';
 import { emit, DomainEvents } from '../shared/events.js';
 import { KV_KEYS, APP } from '../config/app.js';
 import { loadProfile, saveProfile, updateProfileAfterAttempt, predictScore, getDueReviews, getWeakestSkills } from '../learning/profile.js';
+import { updateQuestionMeta } from '../learning/questionBank.js';
 import { knowledgeGraph } from '../learning/graph.js';
 
 let _idc = 0;
@@ -101,6 +102,8 @@ export async function record({ question, chosen, mode, confidence, errorType, re
     ts: Date.now(),
   });
   await saveProfile(profile);
+
+  updateQuestionMeta(question.id, { correct, responseTime, confidence, errorType }).catch(() => {});
 
   emit(DomainEvents.ATTEMPT_RECORDED, { attempt, correct, topic: question.topic });
   return attempt;

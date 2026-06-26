@@ -1,4 +1,4 @@
-import { pick, getPlanner, getComposer } from '../core/engine.js';
+import { pick, getPlanner, getComposer, checkSessionHealth } from '../core/engine.js';
 import { startMock, finishMock, MOCK } from '../core/mocktest.js';
 import { record } from '../core/progress.js';
 import { QUESTIONS } from '../data/questions.js';
@@ -12,6 +12,10 @@ import { LearningPlanner } from '../learning/planner.js';
 import { SessionComposer } from '../learning/composer.js';
 import { knowledgeGraph } from '../learning/graph.js';
 import { learningState, LEARNING_STATES } from '../learning/state.js';
+import { classifyReason, generateDetailedExplanation, generateHint, getCounterfactual } from '../learning/explain.js';
+import { getCuriosityRecommendation, getConceptLinking, getAutoFlashcards } from '../learning/recommender.js';
+import { markExplanationViewed, getQuestionMeta } from '../learning/questionBank.js';
+import { getTrapForQuestion, getCHTTopicWeight } from '../learning/paperAnalysis.js';
 
 export async function mount(wrap, params, { topbar, go }) {
   const mode = params.get('mode') || 'quick';
@@ -241,15 +245,36 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
   let _errorType = null;
   let _responseTimer = null;
   let _responseStart = null;
+  let _readingTimer = null;
+  let _readingStart = null;
+  let _hesitationCount = 0;
+  let _optionChanges = 0;
+  let _hintCount = 0;
   let _notes = {};
   let _relatedQuestions = [];
   let _memoryTips = [];
+  let _hintText = '';
+  let _curiosityRec = null;
+  let _flashcards = [];
+  let _counterfactualText = '';
 
   function getNote(qid) { return _notes[qid] || ''; }
   function saveNote(qid, text) { _notes[qid] = text; }
 
+  function startReadingTimer() {
+    _readingStart = Date.now();
+  }
+
+  function stopReadingTimer() {
+    if (_readingStart) {
+      _readingTimer = Date.now() - _readingStart;
+      _readingStart = null;
+    }
+  }
+
   function startResponseTimer() {
     _responseStart = Date.now();
+    stopReadingTimer();
   }
 
   function stopResponseTimer() {
@@ -257,6 +282,15 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
       _responseTimer = Date.now() - _responseStart;
       _responseStart = null;
     }
+  }
+
+  function trackHesitation() {
+    _hesitationCount++;
+  }
+
+  function trackOptionChange() {
+    _optionChanges++;
+    _hesitationCount++;
   }
 
   function handleKeyboard(e) {
@@ -297,6 +331,11 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
       }
       return;
     }
+    if (key === 'h' || key === 'H') {
+      e.preventDefault();
+      document.getElementById('hint-toggle')?.click();
+      return;
+    }
   }
 
   function attachKeyboard() {
@@ -312,6 +351,18 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
     const immediate = state.mode !== 'mock';
     const bookmarked = _bookmarks.includes(q?.id);
     const now = Date.now();
+    startReadingTimer();
+    _hintText = '';
+    _counterfactualText = '';
+    _curiosityRec = null;
+    _flashcards = [];
+    if (q && !state.revealed) {
+      getQuestionMeta(q.id).then(meta => {
+        if (meta && meta.attempts > 0) {
+          _hintText = generateHint(q, Math.min(meta.attempts, 5));
+        }
+      }).catch(() => {});
+    }
     let timeLeft = '';
     if (state.timed) {
       const s = Math.max(0, Math.floor((state.deadline - now) / 1000));
@@ -321,6 +372,8 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
     const pct = state.questions.length > 0 ? Math.round((state.index / state.questions.length) * 100) : 0;
     const diff = q?.difficulty || 3;
     const isRevealed = immediate && state.revealed;
+    const trapMatch = q ? getTrapForQuestion(q.id) : null;
+    const paperWeight = q ? getCHTTopicWeight(q.topic || '') : 0;
 
     body.innerHTML = `
       <div class="ui-progress">
@@ -336,9 +389,13 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
       <div class="ui-stem-row">
         <div class="ui-stem${q.lang==='hi' ? ' hi' : ''}">${state.index+1}. ${esc(q.stem)}</div>
         <span class="ui-diff-badge ui-diff-badge--${diff}">${difficultyLabel(diff)}</span>
+        ${trapMatch ? `<span class="ui-diff-badge ui-diff-badge--5" title="${esc(trapMatch.trap)}">⚠️ ${esc(trapMatch.label)}</span>` : ''}
+        ${paperWeight > 0.1 ? `<span class="ui-diff-badge" style="background:var(--accent);color:#fff;" title="This topic had ${Math.round(paperWeight * 100)}% weight in CHT 2025">📊 ${Math.round(paperWeight * 100)}%</span>` : ''}
         <button class="ui-btn ui-btn--ghost" id="notes-toggle" title="Add note" style="font-size: 0.85rem;">📝</button>
+        <button class="ui-btn ui-btn--ghost" id="hint-toggle" title="Get a hint" style="font-size: 0.85rem;">💡</button>
         <button class="ui-btn ui-bookmark-btn" id="bm-toggle" title="Bookmark this question">${bookmarked ? "🔖" : "📌"}</button>
       </div>
+      <div id="hint-area" style="display: none; margin-bottom: 8px; padding: 8px; background: var(--surface-2); border-radius: 6px; font-size: 0.85rem; white-space: pre-line;"></div>
       <div id="notes-area" style="display: none; margin-bottom: 8px;">
         <textarea class="ui-textarea" id="notes-input" rows="2" placeholder="Type your note here..." style="font-size: 0.8rem;">${getNote(state.questions[state.index]?.id)}</textarea>
       </div>
@@ -360,8 +417,13 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
       el.addEventListener('click', () => {
         if (busy || (immediate && state.revealed)) return;
         const idx = +el.dataset.idx;
+        if (state.answers[state.index] != null && state.answers[state.index] !== idx) {
+          trackOptionChange();
+        }
         state = quizReducer(state, { type: 'select', answer: idx });
-        startResponseTimer();
+        if (!state.revealed) {
+          startResponseTimer();
+        }
         _confidence = null;
         _errorType = null;
         if (!immediate) {
@@ -395,20 +457,31 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
       try {
         state = quizReducer(state, { type: 'reveal' });
         const qq = state.questions[state.index];
-        await record({ question: qq, chosen: state.answers[state.index], mode: state.mode, confidence: _confidence, errorType: _errorType, responseTime: _responseTimer });
+        await record({
+          question: qq, chosen: state.answers[state.index], mode: state.mode,
+          confidence: _confidence, errorType: _errorType, responseTime: _responseTimer,
+          hesitation: _hesitationCount || _optionChanges,
+          hintUsed: _hintCount > 0,
+          changedAnswer: _optionChanges > 0,
+        });
         render();
         const fb = document.getElementById('feedback');
         const correct = state.answers[state.index] === qq.answer;
         if (fb) {
+          const reason = classifyReason(qq, state.answers[state.index], _errorType);
           fb.innerHTML = `<div class="ui-feedback"><span class="ui-feedback__tag">${correct ? '✅ Correct' : '❌ Wrong'}</span></div>`;
           if (!correct) {
             fb.insertAdjacentHTML('beforeend', errorClassificationHtml());
+            fb.insertAdjacentHTML('beforeend', `<div class="ui-feedback" style="margin-top: 6px; padding: 8px; background: var(--surface-2); border-radius: 6px;"><span class="ui-feedback__tag">${reason.icon} Why? ${reason.label}</span></div>`);
           }
           fb.insertAdjacentHTML('beforeend', `<div class="ui-feedback"><span class="ui-feedback__tag">Explanation:</span> <span class="ui-muted">loading…</span></div>`);
           const { text, source } = await explain(qq, state.answers[state.index]);
           const tag = source === 'cache' ? '✓ cached' : source === 'ai' ? '✨ AI' : '📖';
-          fb.innerHTML = fb.innerHTML.replace('<span class="ui-muted">loading…</span>', esc(text)) +
+          const detailed = generateDetailedExplanation(qq, state.answers[state.index], correct);
+          fb.innerHTML = fb.innerHTML.replace('<span class="ui-muted">loading…</span>',
+            detailed ? `${esc(text)}\n\n${esc(detailed)}` : esc(text)) +
             `<div class="ui-feedback" style="margin:4px 0"><span class="ui-feedback__tag">Explanation ${tag}</span></div>`;
+          markExplanationViewed(qq.id).catch(() => {});
 
           const concept = qq.skill || qq.topic;
           const memoryTip = getMemoryTip(concept, correct);
@@ -423,6 +496,43 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
                 ${related.slice(0, 3).map(rq => `<button class="ui-err-btn" data-related="${rq.id}">Q${rq.id}</button>`).join('')}
               </div></div>`);
           }
+
+          const conceptLinks = knowledgeGraph.getRelatedQuestions(qq.id, 3);
+          if (conceptLinks.length > 0 && !correct) {
+            fb.insertAdjacentHTML('beforeend', `<div style="margin-top: 8px; font-size: 0.8rem;"><span class="ui-feedback__tag">🔗 Related Concepts</span>
+              <div style="display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap;">
+                ${conceptLinks.map(rq => `<span style="padding:2px 6px;background:var(--surface-2);border-radius:4px;">${rq.skill || rq.topic || 'related'}</span>`).join('')}
+              </div></div>`);
+          }
+
+          if (!correct) {
+            getCounterfactual(qq, state.answers[state.index]).then(cf => {
+              if (cf) {
+                fb.insertAdjacentHTML('beforeend', `<div class="ui-feedback" style="margin-top: 8px; padding: 8px; background: var(--surface-2); border-radius: 6px; font-size: 0.85rem;">
+                  <span class="ui-feedback__tag">🤔 Counterfactual</span>
+                  <p style="margin: 4px 0 0;">${esc(cf)}</p></div>`);
+              }
+            }).catch(() => {});
+
+            getAutoFlashcards(qq.id).then(cards => {
+              if (cards.length > 0) {
+                fb.insertAdjacentHTML('beforeend', `<div style="margin-top: 8px; font-size: 0.8rem;"><span class="ui-feedback__tag">📇 Auto-Generated Flashcards</span>
+                  ${cards.map(c => `<div style="margin-top:4px;padding:6px;background:var(--surface-2);border-radius:4px;">
+                    <b>${esc(c.front)}</b><br><span style="color:var(--text-muted);">${esc(c.back)}</span>
+                    <br><small>Review: ${c.revisionDate}</small></div>`).join('')}</div>`);
+              }
+            }).catch(() => {});
+          }
+
+          getCuriosityRecommendation(qq.id).then(rec => {
+            if (rec && !correct) {
+              fb.insertAdjacentHTML('beforeend', `<div style="margin-top: 8px; padding: 8px; background: var(--surface-2); border-radius: 6px;">
+                <span class="ui-feedback__tag">📚 Mini-Lesson: ${esc(rec.title)}</span>
+                <div style="margin-top: 4px; font-size: 0.85rem;">
+                  ${rec.steps.map((s, i) => `<div>${i+1}. ${esc(s.label)} — ${esc(s.description)}</div>`).join('')}
+                </div></div>`);
+            }
+          }).catch(() => {});
 
           fb.insertAdjacentHTML('beforeend', `<details class="ui-followup"><summary>Still confused? Ask a follow-up (uses neurons)</summary>
             <div class="ui-followup-body"><textarea id="doubt" rows="2" class="ui-textarea" placeholder="What part is unclear?"></textarea>
@@ -452,6 +562,23 @@ function runSession(body, { questions, mode, timed, deadline, go }) {
     });
     document.getElementById('notes-input')?.addEventListener('input', (e) => {
       saveNote(state.questions[state.index]?.id, e.target.value);
+    });
+    document.getElementById('hint-toggle')?.addEventListener('click', () => {
+      const area = document.getElementById('hint-area');
+      if (!area) return;
+      if (area.style.display === 'block') {
+        area.style.display = 'none';
+        return;
+      }
+      _hintCount++;
+      if (_hintText) {
+        area.innerHTML = _hintText;
+        area.style.display = 'block';
+      } else {
+        const qq = state.questions[state.index];
+        area.innerHTML = `<span class="ui-muted">Think about: ${qq.skill || qq.topic || 'the main concept'}</span>`;
+        area.style.display = 'block';
+      }
     });
 
     document.getElementById('bm-toggle')?.addEventListener('click', async () => {

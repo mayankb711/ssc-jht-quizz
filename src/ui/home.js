@@ -3,7 +3,12 @@ import { pick } from '../core/engine.js';
 import { LearningPlanner } from '../learning/planner.js';
 import { AnalyticsEngine } from '../learning/analytics.js';
 import { loadProfile, predictScore, getDueReviews, getWeakestSkills } from '../learning/profile.js';
+import { generateDailyReport, generateWeeklyReport } from '../learning/coach.js';
+import { getLearningDNA } from '../learning/velocity.js';
+import { detectPatterns } from '../learning/patterns.js';
+import { predictSSCScore, getTodayGoal, computeMentalEnergy } from '../learning/goals.js';
 import { logError } from '../core/diagnostics.js';
+import { TOPICS } from '../data/topics.js';
 
 let _analytics = null;
 let _planner = null;
@@ -20,16 +25,27 @@ export async function mount(wrap, params, { topbar, go }) {
 
     const daily = await _analytics.getDailyProgress();
     const profile = await loadProfile();
-    const predictedScore = predictScore(profile) || 0;
     const dueReviews = getDueReviews(profile);
     const weakest = getWeakestSkills(profile, 3);
+    const dna = await getLearningDNA();
+    const patterns = await detectPatterns();
+    const dailyReport = await generateDailyReport();
+    const weeklyReport = await generateWeeklyReport();
+    const scorePrediction = await predictSSCScore(profile);
+    const todayGoal = getTodayGoal(profile);
+    const mentalEnergy = computeMentalEnergy(profile);
 
     const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     const hour = new Date().getHours();
     const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+    const themeEmoji = hour < 12 ? '🌅' : '🌙';
 
-    const isMorning = hour < 12;
-    const themeEmoji = isMorning ? '🌅' : '🌙';
+    const topicLabels = {};
+    TOPICS.forEach(t => { topicLabels[t.id] = t.label; });
+
+    const confCal = profile.confidence || { calibration: { accurate: 0, overconfident: 0, underconfident: 0, total: 0 } };
+    const cal = confCal.calibration;
+    const calTotal = cal.total || 1;
 
     body.innerHTML = `
       <div class="ui-card" style="margin-bottom: 16px; background: linear-gradient(135deg, var(--accent)10, var(--accent-2)05); border: 1px solid var(--accent)30;">
@@ -39,10 +55,13 @@ export async function mount(wrap, params, { topbar, go }) {
               <p style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 4px;">${themeEmoji} ${greeting}</p>
               <p style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 8px;">${todayStr}</p>
               <div style="display: flex; align-items: baseline; gap: 4px;">
-                <span style="font-size: 2.2rem; font-weight: 750; color: var(--accent);">${predictedScore}</span>
+                <span style="font-size: 2.2rem; font-weight: 750; color: var(--accent);">${scorePrediction.current != null ? scorePrediction.current : '—'}</span>
                 <span style="font-size: 1rem; color: var(--text-dim);">/ 200</span>
               </div>
               <p style="font-size: 0.8rem; color: var(--text-dim);">Predicted SSC JHT Score</p>
+              ${scorePrediction.likely != null ? `
+                <p style="font-size: 0.7rem; color: var(--text-muted);">Likely: ${scorePrediction.likely} · Potential: ${scorePrediction.potential}</p>
+              ` : ''}
             </div>
             <div style="text-align: right;">
               <div class="ui-progress-ring" style="width: 56px; height: 56px;">
@@ -50,6 +69,7 @@ export async function mount(wrap, params, { topbar, go }) {
                 <span class="ui-progress-ring__label" style="font-size: 0.85rem;">${profile.streak.current}</span>
               </div>
               <p style="font-size: 0.7rem; color: var(--text-dim); margin-top: 4px;">day streak</p>
+              <p style="font-size: 0.65rem; color: var(--text-muted); margin-top: 2px;">${dna.archetype || 'Learner'}</p>
             </div>
           </div>
         </div>
@@ -63,14 +83,15 @@ export async function mount(wrap, params, { topbar, go }) {
                 <span style="font-size: 2rem;">🎯</span>
                 <div>
                   <p style="font-weight: 600;">Today's Goal</p>
-                  <p style="font-size: 0.8rem; color: var(--text-dim);">${Math.max(20 - daily.total, 0)} questions remaining • est. ${Math.max(10, Math.round((20 - daily.total) * 1.5))} min</p>
+                  <p style="font-size: 0.8rem; color: var(--text-dim);">${todayGoal.remaining} of ${todayGoal.target} remaining · est. ${todayGoal.estimatedMinutes} min · Energy: ${todayGoal.energy}</p>
+                  ${todayGoal.breakRecommended ? '<p style="font-size:0.75rem;color:#e74c3c;">⚠ Rest recommended</p>' : ''}
                 </div>
               </div>
             </div>
-            <span style="font-size: 1.5rem; font-weight: 700; color: var(--accent);">${daily.total}<span style="font-size: 0.9rem; color: var(--text-dim);">/20</span></span>
+            <span style="font-size: 1.5rem; font-weight: 700; color: var(--accent);">${Math.round(daily.total)}<span style="font-size: 0.9rem; color: var(--text-dim);">/${todayGoal.target}</span></span>
           </div>
           <div class="ui-progress__bar" style="margin-top: 10px;">
-            <span class="ui-progress__bar-fill" style="width: ${Math.min(100, (daily.total / 20) * 100)}%;"></span>
+            <span class="ui-progress__bar-fill" style="width: ${Math.min(100, todayGoal.progress * 100)}%;"></span>
           </div>
         </div>
       </div>
@@ -88,7 +109,7 @@ export async function mount(wrap, params, { topbar, go }) {
         <div class="ui-card" style="margin-bottom: 12px; border-left: 3px solid #f39c12;">
           <div class="ui-card__body" style="padding: 12px 16px;">
             <p style="font-size: 0.85rem; font-weight: 600; color: #f39c12;">🔄 ${dueReviews.length} reviews due</p>
-            <p style="font-size: 0.75rem; color: var(--text-dim);">Spaced repetition items need attention</p>
+            <p style="font-size: 0.75rem; color: var(--text-dim);">${dueReviews.slice(0,3).map(r => `${r.skillId} (${Math.round(r.recallProbability*100)}%)`).join(', ')}${dueReviews.length > 3 ? ' +more' : ''}</p>
           </div>
         </div>
       ` : ''}
@@ -100,6 +121,72 @@ export async function mount(wrap, params, { topbar, go }) {
             <ul style="margin: 6px 0 0 16px; font-size: 0.8rem; color: var(--text-dim);">
               ${weakest.map(w => `<li>${w.id} (${Math.round(w.mastery * 100)}% mastery)</li>`).join('')}
             </ul>
+          </div>
+        </div>
+      ` : ''}
+
+      <details class="ui-card" style="margin-bottom: 12px;">
+        <summary class="ui-card__header" style="padding: 10px 16px; cursor: pointer;">
+          <span style="font-weight: 600; font-size: 0.85rem;">🤖 AI Coach Report</span>
+          <span style="color: var(--text-muted); font-size: 0.75rem;">tap to expand</span>
+        </summary>
+        <div class="ui-card__body" style="padding: 12px 16px 16px; font-size: 0.8rem;">
+          ${dailyReport.sections.map(s => `<div style="margin-bottom: 6px;">${s.text}</div>`).join('')}
+          ${dailyReport.recommendations.map(r => `<div style="margin-bottom: 4px; padding-left: 8px; border-left: 2px solid var(--accent);">${r.text}</div>`).join('')}
+        </div>
+      </details>
+
+      <details class="ui-card" style="margin-bottom: 12px;">
+        <summary class="ui-card__header" style="padding: 10px 16px; cursor: pointer;">
+          <span style="font-weight: 600; font-size: 0.85rem;">📊 Weekly Strategy</span>
+          <span style="color: var(--text-muted); font-size: 0.75rem;">tap to expand</span>
+        </summary>
+        <div class="ui-card__body" style="padding: 12px 16px 16px; font-size: 0.8rem;">
+          ${weeklyReport.sections.map(s => `<div style="margin-bottom: 6px;">${s.text}</div>`).join('')}
+          ${weeklyReport.recommendations.map(r => `<div style="margin-bottom: 4px; padding-left: 8px; border-left: 2px solid var(--accent);">${r}</div>`).join('')}
+        </div>
+      </details>
+
+      ${patterns.length > 0 ? `
+        <details class="ui-card" style="margin-bottom: 12px;">
+          <summary class="ui-card__header" style="padding: 10px 16px; cursor: pointer;">
+            <span style="font-weight: 600; font-size: 0.85rem;">🔍 Detected Patterns</span>
+            <span style="color: var(--text-muted); font-size: 0.75rem;">${patterns.length} found</span>
+          </summary>
+          <div class="ui-card__body" style="padding: 12px 16px 16px; font-size: 0.8rem;">
+            ${patterns.slice(0, 5).map(p => `<div style="margin-bottom: 8px; padding: 8px; background: var(--surface-2); border-radius: 4px;">
+              <div style="font-weight: 600; margin-bottom: 2px;">${p.label}</div>
+              <div style="color: var(--text-muted); font-size: 0.75rem;">${p.detail}</div>
+            </div>`).join('')}
+          </div>
+        </details>
+      ` : ''}
+
+      ${calTotal > 5 ? `
+        <div class="ui-card" style="margin-bottom: 12px;">
+          <div class="ui-card__header" style="padding: 10px 16px 0;">
+            <h3 class="ui-section-head__title" style="font-size: 0.85rem;">Confidence vs Accuracy</h3>
+          </div>
+          <div class="ui-card__body" style="padding: 12px 16px 16px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.75rem; text-align: center;">
+              <div style="padding: 8px; background: var(--surface-2); border-radius: 4px;">
+                <div style="font-size: 1rem; font-weight: 700; color: #27ae60;">${Math.round(cal.accurate / calTotal * 100)}%</div>
+                <div>Accurate</div>
+              </div>
+              <div style="padding: 8px; background: var(--surface-2); border-radius: 4px;">
+                <div style="font-size: 1rem; font-weight: 700; color: #e74c3c;">${Math.round(cal.overconfident / calTotal * 100)}%</div>
+                <div>Overconfident ⚠</div>
+              </div>
+              <div style="padding: 8px; background: var(--surface-2); border-radius: 4px;">
+                <div style="font-size: 1rem; font-weight: 700; color: #f39c12;">${Math.round(cal.underconfident / calTotal * 100)}%</div>
+                <div>Underconfident</div>
+              </div>
+              <div style="padding: 8px; background: var(--surface-2); border-radius: 4px;">
+                <div style="font-size: 1rem; font-weight: 700; color: var(--accent);">${Math.round(daily.accuracy * 100)}%</div>
+                <div>Actual accuracy</div>
+              </div>
+            </div>
+            ${cal.overconfident > cal.accurate ? '<p style="margin-top:6px;font-size:0.7rem;color:#e74c3c;">⚠ You are often confident when wrong — review your thought process</p>' : ''}
           </div>
         </div>
       ` : ''}

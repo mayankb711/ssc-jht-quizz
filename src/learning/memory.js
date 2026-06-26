@@ -65,8 +65,8 @@ export class MemoryModel {
     return curve;
   }
 
-  estimateDifficultyAdjustment(questionId, profile, history) {
-    const d = profile.difficulty.byQuestion[questionId];
+  estimateDifficultyAdjustment(questionId, topic, profile, history) {
+    const d = profile.difficulty.byQuestion[topic];
     if (!d) return 0;
     const recent = (history || []).filter(a =>
       a.question_id === questionId
