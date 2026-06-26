@@ -1,10 +1,12 @@
 /* ============================================================
    progress.js — records attempts, computes scores, streaks, and
    per-topic mastery summaries shown on Home/Progress screens.
+   Online-first: every write also pushes to cloud; reads pull
+   from cloud first, falling back to local cache.
    ============================================================ */
 
-import { allAttempts, addAttempt, kvGet, kvSet } from '../store/local.js';
-import { push as sbPush, getStatus as sbStatus } from '../store/supabase.js';
+import { allAttempts, kvGet, kvSet } from '../store/local.js';
+import { recordAttempt, fetchAttempts } from '../store/supabase.js';
 
 let _idc = 0;
 function newId() { _idc++; return `${Date.now().toString(36)}-${_idc}-${Math.random().toString(36).slice(2,7)}`; }
@@ -22,9 +24,8 @@ export async function record({ question, chosen, mode }) {
     ts: Date.now(),
     mode: mode || 'practice',
   };
-  await addAttempt(attempt);
-  // best-effort cloud sync (only if configured and signed in)
-  if (sbStatus().signedIn) sbPush().catch(() => {});
+  // online-first: save locally + push to cloud (fire-and-forget)
+  await recordAttempt(attempt);
   return attempt;
 }
 
@@ -43,6 +44,7 @@ export function scoreSession(attempts) {
 
 // ---- aggregate stats for Home screen ----
 export async function summary() {
+  await fetchAttempts(); // online-first: sync cloud data into local cache
   const attempts = await allAttempts();
   if (!attempts.length) {
     return { total: 0, accuracy: 0, streakDays: 0, topics: [] };

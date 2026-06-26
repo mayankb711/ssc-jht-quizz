@@ -3,7 +3,7 @@
 */
 
 import { kvGet } from './store/local.js';
-import { configure as sbConfigure, autoPull } from './store/supabase.js';
+import { configure as sbConfigure, autoPull, getStatus as sbStatus } from './store/supabase.js';
 import { logError } from './core/diagnostics.js';
 import { APP } from './config/app.js';
 
@@ -58,10 +58,14 @@ async function initTheme() {
 }
 
 function topbar(title, sub) {
+  const st = sbStatus();
+  const connDot = st.configured ? (st.online ? '🟢' : '🔴') : '';
+  const connTitle = st.configured ? (st.online ? 'Cloud connected' : 'Offline mode') : '';
   return `
     <div class="ui-topbar">
       <div class="ui-brand">${title}${sub ? `<span class="sub">${sub}</span>` : ''}</div>
       <div class="ui-topbar__nav">
+        ${connDot ? `<span class="ui-conn-dot" title="${connTitle}">${connDot}</span>` : ''}
         <button class="ui-nav-btn" data-go="diagnostics" title="Diagnostics"><span class="ui-nav-btn__icon">🔍</span> Diag</button>
         <button class="ui-nav-btn" data-go="progress" title="Progress"><span class="ui-nav-btn__icon">📊</span> Progress</button>
         <button class="ui-nav-btn" data-go="settings" title="Settings"><span class="ui-nav-btn__icon">⚙️</span> Settings</button>

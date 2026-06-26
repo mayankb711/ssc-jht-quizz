@@ -3,7 +3,7 @@
 
 import { kvGet, kvSet } from '../store/local.js';
 import {
-  configure as sbConfigure, isConfigured as sbReady,
+  configure as sbConfigure,
   signInMagic, signOut, getSession, getStatus,
   push as sbPush, pull as sbPull, onAuthChange,
 } from '../store/supabase.js';
@@ -151,14 +151,17 @@ export async function mount(wrap, params, { topbar, go }) {
     if (!el) return;
 
     if (!sbStatus.configured) {
-      el.innerHTML = '<p class="ui-muted" style="font-size: 0.82rem;">Enter credentials above and click <b>Save and connect</b>.</p>';
+      el.innerHTML = '<p class="ui-text-sm ui-muted">Enter credentials above and click <b>Save and connect</b>.</p>';
       return;
     }
+
+    const onlineBadge = sbStatus.online ? '<span class="ui-badge ui-badge--info">Online</span>' : '<span class="ui-badge ui-badge--warn">Offline</span>';
 
     const authHtml = sbStatus.signedIn ? `
       <div class="ui-card__body ui-sync-status">
         <div class="ui-sync-row">
           <span class="ui-badge ui-badge--good">Signed in</span>
+          ${onlineBadge}
           <span class="ui-sync-email ui-muted">${esc(sbStatus.user?.email || 'Connected')}</span>
         </div>
         <div class="ui-sync-row${sbStatus.syncInProgress ? '' : ' ui-sync-row--last'}">
@@ -174,7 +177,10 @@ export async function mount(wrap, params, { topbar, go }) {
         </div>
       </div>` : `
       <div class="ui-card__body ui-sync-status">
-        <p class="ui-text-sm ui-muted ui-mb-sm">Connected. Sign in with your email to sync.</p>
+        <div class="ui-sync-row">
+          ${onlineBadge}
+          <span class="ui-sync-email ui-muted">Connected. Sign in to sync.</span>
+        </div>
         <div class="ui-field">
           <label class="ui-field__label">Email</label>
           <input id="sb-email" class="ui-input" placeholder="you@email.com">

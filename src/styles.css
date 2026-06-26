@@ -144,6 +144,12 @@ a:hover {
   align-items: center;
 }
 
+.ui-conn-dot {
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: default;
+}
+
 /* === Mode Cards === */
 .mode-card {
   cursor: pointer;

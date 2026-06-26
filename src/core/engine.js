@@ -14,11 +14,13 @@ import { QUESTIONS } from '../data/questions.js';
 import { TOPICS } from '../data/topics.js';
 import { allAttempts } from '../store/local.js';
 import { getGeneratedBank } from '../ai/client.js';
+import { fetchAttempts } from '../store/supabase.js';
 
 const DAY = 86400000;
 
 // Build per-(topic.skill) mastery from attempts. Returns Map.
 export async function computeMastery() {
+  await fetchAttempts(); // online-first: pull cloud data into local cache
   const attempts = await allAttempts();
   const now = Date.now();
   // decay weight: newer attempts count more

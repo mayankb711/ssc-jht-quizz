@@ -1,25 +1,22 @@
 /*
-  supabase.js — optional cloud sync.
-  Reads credentials from settings; if absent, this module becomes
-  a no-op and the app runs fully offline against local.js.
-
-  Syncs attempts, settings, and generated questions.
-  Tracks last-sync timestamp to only push new data.
-
-  Setup (one-time, in app Settings):
-    1. Create a free project at supabase.com
-    2. Run supabase/schema.sql in the SQL editor
-    3. Paste Project URL + anon key into Settings
+  supabase.js — online-first cloud sync layer.
+  Cloud is the primary data source; IndexedDB is the local cache.
+  Reads go cloud-first, writes go cloud + cache.
+  Degrades gracefully when offline or not configured.
 */
 
 import { createClient } from '@supabase/supabase-js';
-import { kvGet, kvSet, allAttempts, allGeneratedQuestions, upsertGeneratedQuestion, replaceAttempts } from './local.js';
+import { kvGet, kvSet, allAttempts, allGeneratedQuestions, upsertGeneratedQuestion, replaceAttempts, addAttempt } from './local.js';
 
 let _client = null;
 let _session = null;
 let _syncInProgress = false;
 let _lastSyncTs = 0;
 let _listeners = [];
+let _online = navigator.onLine;
+
+window.addEventListener('online', () => { _online = true; notify(); });
+window.addEventListener('offline', () => { _online = false; notify(); });
 
 export function onAuthChange(fn) {
   _listeners.push(fn);
@@ -38,9 +35,15 @@ export function getStatus() {
     syncInProgress: _syncInProgress,
     lastSyncTs: _lastSyncTs,
     lastSyncAt: _lastSyncTs ? new Date(_lastSyncTs).toLocaleString() : null,
+    online: _online,
   };
 }
 
+export function isOnline() {
+  return _online;
+}
+
+// ---- Setup ----
 export async function configure() {
   const url = await kvGet('sb_url');
   const key = await kvGet('sb_key');
@@ -54,7 +57,6 @@ export async function configure() {
       },
     });
 
-    // PKCE: exchange the authorization code if present in URL (magic-link redirect)
     const params = new URLSearchParams(window.location.search);
     const pkceCode = params.get('code');
     if (pkceCode) {
@@ -70,10 +72,9 @@ export async function configure() {
       _session = data.session || null;
     }
 
-    // listen for auth changes
     _client.auth.onAuthStateChange((event, session) => {
       _session = session;
-      if (event === 'SIGNED_IN') autoPull().catch(() => {});
+      if (event === 'SIGNED_IN') fetchAll().catch(() => {});
       notify();
     });
 
@@ -89,14 +90,8 @@ export async function configure() {
 }
 
 // ---- Auth ----
-export function isConfigured() {
-  return !!_client;
-}
-
 export async function signInMagic(email) {
   if (!_client) throw new Error('Supabase not configured');
-  // Use the current origin as redirect so it works everywhere:
-  // localhost, GitHub Pages, or any custom domain
   const redirectTo = window.location.origin + window.location.pathname;
   const { error } = await _client.auth.signInWithOtp({
     email,
@@ -111,24 +106,102 @@ export async function getSession() {
 }
 
 export async function signOut() {
-  if (_client) {
-    await _client.auth.signOut();
-  }
+  if (_client) await _client.auth.signOut();
   _session = null;
   notify();
 }
 
 // ---- Sync tracking ----
-async function getLastSyncTs() {
-  return await kvGet('supabase_last_sync_ts', 0);
-}
-async function setLastSyncTs(ts) {
-  _lastSyncTs = ts;
-  await kvSet('supabase_last_sync_ts', ts);
+async function touchSyncTs() {
+  _lastSyncTs = Date.now();
+  await kvSet('supabase_last_sync_ts', _lastSyncTs);
   notify();
 }
 
-// ---- Push local data to cloud ----
+// ================================================================
+//  Online-first data layer
+//  Writes: local cache + cloud (fire-and-forget)
+//  Reads:  cloud first, local cache fallback
+// ================================================================
+
+// ---- Record one attempt ----
+/** Saves locally and pushes to cloud immediately. Always works offline. */
+export async function recordAttempt(attempt) {
+  // always write to local cache
+  await addAttempt(attempt);
+  // best-effort cloud push
+  if (!_client || !_session?.user || !_online) return;
+  try {
+    await _client.from('attempts').upsert(
+      { ...attempt, user_id: _session.user.id },
+      { onConflict: 'id' }
+    );
+    await touchSyncTs();
+  } catch {}
+}
+
+// ---- Fetch attempts from cloud, merge into local cache ----
+/** Cloud is source of truth. Merges into local, returns local list. */
+export async function fetchAttempts() {
+  if (!_client || !_session?.user || !_online) return;
+  try {
+    const { data } = await _client.from('attempts').select('*').eq('user_id', _session.user.id);
+    if (!data || !data.length) return;
+    const local = new Map((await allAttempts()).map(a => [a.id, a]));
+    let changed = false;
+    for (const r of data) {
+      const have = local.get(r.id);
+      if (!have || (r.ts || 0) >= (have.ts || 0)) {
+        local.set(r.id, r);
+        changed = true;
+      }
+    }
+    if (changed) await replaceAttempts([...local.values()]);
+    await touchSyncTs();
+  } catch {}
+}
+
+// ---- Fetch all cloud data (attempts, settings, questions) ----
+export async function fetchAll() {
+  await fetchAttempts();
+  await fetchSettings();
+  await fetchGeneratedQuestions();
+}
+
+// ---- Fetch settings from cloud ----
+async function fetchSettings() {
+  if (!_client || !_session?.user || !_online) return;
+  try {
+    const { data } = await _client
+      .from('settings')
+      .select('*')
+      .eq('user_id', _session.user.id)
+      .single();
+    if (data) {
+      if (data.theme) {
+        await kvSet('theme', data.theme);
+        document.documentElement.setAttribute('data-theme', data.theme);
+      }
+      if (data.neuron_cap) await kvSet('neuron_cap', data.neuron_cap);
+    }
+  } catch {}
+}
+
+// ---- Fetch generated questions from cloud ----
+async function fetchGeneratedQuestions() {
+  if (!_client || !_session?.user || !_online) return;
+  try {
+    const { data } = await _client
+      .from('generated_questions')
+      .select('*')
+      .eq('user_id', _session.user.id);
+    for (const q of (data || [])) {
+      if (q && q.id) await upsertGeneratedQuestion(q);
+    }
+  } catch {}
+}
+
+// ---- Push local data to cloud (legacy batch-sync) ----
 export async function push() {
   if (!_client) return { ok: false, reason: 'not-configured' };
   const sess = _session || (await getSession());
@@ -140,10 +213,9 @@ export async function push() {
 
   try {
     const uid = sess.user.id;
-    const lastSync = await getLastSyncTs();
+    const lastSync = await kvGet('supabase_last_sync_ts', 0);
     const now = Date.now();
 
-    // push attempts created after last sync
     const all = await allAttempts();
     const newAttempts = all.filter(a => a.ts > lastSync);
     if (newAttempts.length) {
@@ -152,7 +224,6 @@ export async function push() {
       if (error) return { ok: false, reason: error.message, pushed: 0, total: newAttempts.length };
     }
 
-    // push settings
     const settings = {
       theme: await kvGet('theme', 'dark'),
       neuron_cap: await kvGet('neuron_cap', 8000),
@@ -161,14 +232,13 @@ export async function push() {
     };
     await _client.from('settings').upsert(settings, { onConflict: 'user_id' });
 
-    // push generated questions
     const questions = await allGeneratedQuestions();
     if (questions.length) {
       const qRows = questions.map(q => ({ ...q, user_id: uid }));
       await _client.from('generated_questions').upsert(qRows, { onConflict: 'id' });
     }
 
-    await setLastSyncTs(now);
+    await touchSyncTs();
     return { ok: true, pushed: newAttempts.length, total: newAttempts.length };
   } catch (e) {
     return { ok: false, reason: e.message };
@@ -178,7 +248,7 @@ export async function push() {
   }
 }
 
-// ---- Pull cloud data, merge into local ----
+// ---- Pull cloud data into local ----
 export async function pull() {
   if (!_client) return { ok: false, reason: 'not-configured' };
   const sess = _session || (await getSession());
@@ -189,56 +259,8 @@ export async function pull() {
   notify();
 
   try {
-    const uid = sess.user.id;
-    const now = Date.now();
-    let merged = 0;
-
-    // pull attempts
-    const { data: cloudAttempts, error: attErr } = await _client
-      .from('attempts')
-      .select('*')
-      .eq('user_id', uid);
-    if (attErr) return { ok: false, reason: attErr.message };
-
-    const localAttempts = new Map((await allAttempts()).map(a => [a.id, a]));
-    for (const r of (cloudAttempts || [])) {
-      const have = localAttempts.get(r.id);
-      if (!have || (r.ts || 0) > (have.ts || 0)) {
-        localAttempts.set(r.id, r);
-        merged++;
-      }
-    }
-    if (merged > 0) {
-      await replaceAttempts([...localAttempts.values()]);
-    }
-
-    // pull settings
-    const { data: cloudSettings } = await _client
-      .from('settings')
-      .select('*')
-      .eq('user_id', uid)
-      .single();
-    if (cloudSettings) {
-      if (cloudSettings.theme) {
-        await kvSet('theme', cloudSettings.theme);
-        document.documentElement.setAttribute('data-theme', cloudSettings.theme);
-      }
-      if (cloudSettings.neuron_cap) await kvSet('neuron_cap', cloudSettings.neuron_cap);
-    }
-
-    // pull generated questions
-    const { data: cloudQuestions } = await _client
-      .from('generated_questions')
-      .select('*')
-      .eq('user_id', uid);
-    for (const q of (cloudQuestions || [])) {
-      if (q && q.id) {
-        await upsertGeneratedQuestion(q);
-      }
-    }
-
-    await setLastSyncTs(now);
-    return { ok: true, pulled: cloudAttempts?.length || 0, merged };
+    await fetchAll();
+    return { ok: true };
   } catch (e) {
     return { ok: false, reason: e.message };
   } finally {
@@ -251,5 +273,5 @@ export async function pull() {
 export async function autoPull() {
   const sess = _session || (await getSession());
   if (!sess?.user) return;
-  await pull();
+  await fetchAll();
 }
