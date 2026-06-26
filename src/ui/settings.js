@@ -190,6 +190,8 @@ export async function mount(wrap, params, { topbar, go }) {
     const deviceId = cloudStatus.user?.id || '';
     const providerBadge = '<span class="ui-badge ui-badge--good">Firebase</span>';
 
+    const errHtml = cloudStatus.lastSyncError ? `<div class="ui-sync-row"><span class="ui-badge ui-badge--warn">Sync error: ${esc(cloudStatus.lastSyncError)}</span></div>` : '';
+
     const authHtml = cloudStatus.signedIn ? `
       <div class="ui-card__body ui-sync-status">
         <div class="ui-sync-row">
@@ -197,10 +199,11 @@ export async function mount(wrap, params, { topbar, go }) {
           ${onlineBadge}
           <span class="ui-sync-email ui-muted">Device: ${esc(deviceId.slice(0, 20))}...</span>
         </div>
-        <div class="ui-sync-row${cloudStatus.syncInProgress ? '' : ' ui-sync-row--last'}">
+        <div class="ui-sync-row${cloudStatus.syncInProgress ? '' : ''}">
           <span class="ui-badge ui-badge--neutral">Last sync: ${cloudStatus.lastSyncAt || 'never'}</span>
           ${cloudStatus.syncInProgress ? '<span class="ui-spinner ui-spinner--small" style="margin: 0;"></span>' : ''}
         </div>
+        ${errHtml}
         <div class="ui-btn-row${cloudStatus.syncInProgress ? '' : ' ui-mt-sm'}">
           <button class="ui-btn" id="fb-push" ${cloudStatus.syncInProgress ? 'disabled' : ''}>
             ${cloudStatus.syncInProgress ? 'Syncing...' : 'Sync now \u2191'}

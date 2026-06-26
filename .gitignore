@@ -6,3 +6,6 @@ Thumbs.db
 .env
 .env.*
 .cursor/
+
+test/results*.json
+test/screenshots/

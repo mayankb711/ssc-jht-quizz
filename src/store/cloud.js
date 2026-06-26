@@ -31,6 +31,7 @@ export function getStatus() {
     syncInProgress: _status.syncInProgress,
     lastSyncTs: _status.lastSyncTs,
     lastSyncAt: _status.lastSyncAt,
+    lastSyncError: _status.lastSyncError,
     online: _status.online,
   };
 }

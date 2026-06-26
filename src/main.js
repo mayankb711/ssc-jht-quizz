@@ -76,16 +76,18 @@ async function initTheme() {
 
 function topbar(title, sub) {
   const st = getStatus();
-  const connDot = st.configured ? (st.online ? 'ðŸŸ¢' : 'ðŸ”´') : '';
+  const connDot = st.configured ? (st.online ? '🟢' : '🔴') : '';
   const connTitle = st.configured ? (st.online ? 'Cloud connected' : 'Offline mode') : '';
+  const errDot = st.lastSyncError ? '<span class="ui-conn-dot" title="Sync error: ' + esc(st.lastSyncError) + '" style="color:var(--warn);">⚠️</span>' : '';
   return `
     <div class="ui-topbar">
       <div class="ui-brand">${title}${sub ? `<span class="sub">${sub}</span>` : ''}</div>
       <div class="ui-topbar__nav">
-        ${connDot ? `<span class="ui-conn-dot" title="${connTitle}">${connDot}</span>` : ''}
-        <button class="ui-nav-btn" data-go="diagnostics" title="Diagnostics"><span class="ui-nav-btn__icon">ðŸ”</span> Diag</button>
-        <button class="ui-nav-btn" data-go="progress" title="Progress"><span class="ui-nav-btn__icon">ðŸ“Š</span> Progress</button>
-        <button class="ui-nav-btn" data-go="settings" title="Settings"><span class="ui-nav-btn__icon">âš™ï¸</span> Settings</button>
+        ${connDot}
+        ${errDot}
+        <button class="ui-nav-btn" data-go="diagnostics" title="Diagnostics"><span class="ui-nav-btn__icon">🔍</span> Diag</button>
+        <button class="ui-nav-btn" data-go="progress" title="Progress"><span class="ui-nav-btn__icon">📊</span> Progress</button>
+        <button class="ui-nav-btn" data-go="settings" title="Settings"><span class="ui-nav-btn__icon">⚙️</span> Settings</button>
       </div>
     </div>`;
 }

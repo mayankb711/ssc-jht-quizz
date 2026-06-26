@@ -3,10 +3,14 @@ import { logError } from '../core/diagnostics.js';
 import { KV_KEYS } from '../config/app.js';
 import { FIREBASE_CONFIG } from '../config/firebase.js';
 
+const FETCH_TIMEOUT = 10000;
+const MAX_RETRIES = 2;
+
 let _config = null;
 let _deviceId = null;
 let _syncInProgress = false;
 let _lastSyncTs = 0;
+let _lastSyncError = null;
 let _listeners = [];
 let _online = navigator.onLine;
 let _recordMutex = Promise.resolve();
@@ -31,8 +35,31 @@ export function getStatus() {
     syncInProgress: _syncInProgress,
     lastSyncTs: _lastSyncTs,
     lastSyncAt: _lastSyncTs ? new Date(_lastSyncTs).toLocaleString() : null,
+    lastSyncError: _lastSyncError,
     online: _online,
   };
+}
+
+async function fetchWithTimeout(url, opts = {}) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT);
+  try {
+    const res = await fetch(url, { ...opts, signal: ctrl.signal });
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function retryFetch(url, opts, retries = MAX_RETRIES) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetchWithTimeout(url, opts);
+    } catch (e) {
+      if (attempt === retries) throw e;
+      await new Promise(r => setTimeout(r, (attempt + 1) * 500));
+    }
+  }
 }
 
 export function isOnline() { return _online; }
@@ -143,7 +170,7 @@ async function userDocUrl() {
 
 async function readDoc() {
   const url = await userDocUrl();
-  const res = await fetch(url);
+  const res = await retryFetch(url);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error('Firestore read failed: ' + res.status);
   const data = await res.json();
@@ -152,7 +179,8 @@ async function readDoc() {
 
 async function writeDoc(update) {
   const doc = { fields: toFields(update) };
-  const res = await fetch(await userDocUrl(), {
+  const url = await userDocUrl();
+  const res = await retryFetch(url, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(doc),
@@ -170,7 +198,7 @@ function tsToComparable(ts) {
 
 export async function recordAttempt(attempt) {
   await addAttempt(attempt);
-  if (!_config || !_deviceId || !_online) return;
+  if (!_config || !_deviceId || !_online) { _lastSyncError = 'offline'; notify(); return; }
   _recordMutex = _recordMutex.then(async () => {
     try {
       const existing = await readDoc();
@@ -183,8 +211,11 @@ export async function recordAttempt(attempt) {
         questions: existing?.questions || '[]',
         bookmarks: existing?.bookmarks || '[]',
       });
+      _lastSyncError = null;
       await touchSyncTs();
     } catch (e) {
+      _lastSyncError = e.message;
+      notify();
       logError(e, { file: 'firebase.js', func: 'recordAttempt', source: 'firebase', action: 'record attempt to cloud', recoverySteps: ['Data is saved locally', 'Will sync when online'] });
     }
   });
@@ -192,7 +223,7 @@ export async function recordAttempt(attempt) {
 }
 
 export async function fetchAttempts() {
-  if (!_config || !_deviceId || !_online) return;
+  if (!_config || !_deviceId || !_online) { _lastSyncError = 'offline'; notify(); return; }
   try {
     const doc = await readDoc();
     if (!doc?.attempts) return;
@@ -208,17 +239,19 @@ export async function fetchAttempts() {
       }
     }
     if (changed) await replaceAttempts([...local.values()]);
+    _lastSyncError = null;
     await touchSyncTs();
   } catch (e) {
+    _lastSyncError = e.message; notify();
     logError(e, { file: 'firebase.js', func: 'fetchAttempts', source: 'firebase', action: 'fetch attempts from cloud', recoverySteps: ['Using local data', 'Will retry on next sync'] });
   }
 }
 
 async function readAllAndMerge() {
-  if (!_config || !_deviceId || !_online) return;
+  if (!_config || !_deviceId || !_online) { _lastSyncError = 'offline'; notify(); return; }
   try {
     const doc = await readDoc();
-    if (!doc) return;
+    if (!doc) { _lastSyncError = null; return; }
     if (doc.attempts) {
       const cloudAttempts = JSON.parse(doc.attempts);
       if (cloudAttempts.length) {
@@ -259,8 +292,10 @@ async function readAllAndMerge() {
         await kvSet('bookmarks', merged);
       }
     }
+    _lastSyncError = null;
     await touchSyncTs();
   } catch (e) {
+    _lastSyncError = e.message; notify();
     logError(e, { file: 'firebase.js', func: 'readAllAndMerge', source: 'firebase', action: 'read and merge cloud data', recoverySteps: ['Local data preserved', 'Will retry on next sync'] });
   }
 }
@@ -273,6 +308,7 @@ export async function push() {
   if (!_config) return { ok: false, reason: 'not-configured' };
   if (!_deviceId) return { ok: false, reason: 'no-session' };
   if (_syncInProgress) return { ok: false, reason: 'sync-in-progress' };
+  if (!_online) return { ok: false, reason: 'offline' };
   _syncInProgress = true; notify();
   try {
     const lastSync = await kvGet(KV_KEYS.firebaseLastSyncTs, 0);
@@ -300,9 +336,11 @@ export async function push() {
       bookmarks: JSON.stringify(mergedBookmarks),
       ts: Date.now(),
     });
+    _lastSyncError = null;
     await touchSyncTs();
     return { ok: true, pushed: allAttemptsLocal.length, total: allAttemptsLocal.length };
   } catch (e) {
+    _lastSyncError = e.message; notify();
     return { ok: false, reason: e.message };
   } finally {
     _syncInProgress = false; notify();
@@ -312,12 +350,14 @@ export async function push() {
 export async function pull() {
   if (!_config) return { ok: false, reason: 'not-configured' };
   if (!_deviceId) return { ok: false, reason: 'no-session' };
+  if (!_online) return { ok: false, reason: 'offline' };
   if (_syncInProgress) return { ok: false, reason: 'sync-in-progress' };
   _syncInProgress = true; notify();
   try {
     await readAllAndMerge();
     return { ok: true };
   } catch (e) {
+    _lastSyncError = e.message; notify();
     return { ok: false, reason: e.message };
   } finally {
     _syncInProgress = false; notify();
