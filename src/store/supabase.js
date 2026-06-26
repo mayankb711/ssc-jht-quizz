@@ -53,8 +53,22 @@ export async function configure() {
         autoRefreshToken: true,
       },
     });
-    const { data } = await _client.auth.getSession();
-    _session = data.session || null;
+
+    // PKCE: exchange the authorization code if present in URL (magic-link redirect)
+    const params = new URLSearchParams(window.location.search);
+    const pkceCode = params.get('code');
+    if (pkceCode) {
+      const { data, error } = await _client.auth.exchangeCodeForSession(pkceCode);
+      if (error) {
+        console.warn('PKCE code exchange failed:', error);
+      } else {
+        _session = data.session || null;
+      }
+      window.history.replaceState({}, '', window.location.pathname);
+    } else {
+      const { data } = await _client.auth.getSession();
+      _session = data.session || null;
+    }
 
     // listen for auth changes
     _client.auth.onAuthStateChange((event, session) => {

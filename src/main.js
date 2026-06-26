@@ -114,9 +114,12 @@ window.addEventListener('hashchange', render);
 window.addEventListener('error', (e) => showFatal(e.error || e.message, 'Unhandled error'));
 window.addEventListener('unhandledrejection', (e) => showFatal(e.reason, 'Unhandled rejection'));
 
-// If we're returning from a magic-link auth, handle it before normal init
+// Handle PKCE / implicit magic-link redirect before normal init
 const initHash = location.hash;
-if (initHash.includes('access_token') || initHash.includes('type=recovery')) {
+const hasPKCECode = new URLSearchParams(window.location.search).has('code');
+const hasImplicitTokens = initHash.includes('access_token') || initHash.includes('type=recovery');
+
+if (hasImplicitTokens || hasPKCECode) {
   initTheme().then(() => {
     history.replaceState(null, '', window.location.pathname);
     location.hash = 'screen=home';
